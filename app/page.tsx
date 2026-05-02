@@ -14,6 +14,7 @@ const SAMPLE_INPUT =
   "You are in violation of your lease due to an unauthorized pet. Remove the pet within 48 hours or face penalties.";
 const JAMMED_SECTION_CONTENT =
   "This shell jammed briefly, but the procedural fog remains intact. Please regard this section as a courteous placeholder preserving the packet's ceremonial continuity without adding facts, admissions, threats, citations, or unnecessary confidence.";
+const SECTION_RETRY_DELAYS_MS = [1500, 4000, 8000];
 
 const DOMAIN_OPTIONS: Array<{ value: Domain; label: string }> = [
   { value: "housing", label: "Housing" },
@@ -137,6 +138,26 @@ function splitParagraphs(content: string): string[] {
     .filter(Boolean);
 }
 
+function sleep(ms: number) {
+  return new Promise((resolve) => {
+    window.setTimeout(resolve, ms);
+  });
+}
+
+function shouldRetrySectionError(message: string): boolean {
+  const normalized = message.toLowerCase();
+
+  return (
+    normalized.includes("load failed") ||
+    normalized.includes("failed to fetch") ||
+    normalized.includes("networkerror") ||
+    normalized.includes("request failed (502)") ||
+    normalized.includes("request failed (503)") ||
+    normalized.includes("request failed (504)") ||
+    normalized.includes("returned a non-json response")
+  );
+}
+
 function metricTone(fogIndex: number, isGenerating: boolean): string {
   if (isGenerating) {
     return "Fog density rising.";
@@ -180,41 +201,60 @@ async function fetchSectionResult(args: {
   section: OutlineSection;
   shell: number;
   total: number;
+  onRetry?: (message: string) => void;
 }): Promise<SectionApiResponse> {
-  try {
-    const sectionResponse = await fetch("/api/cannon/section", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        request: args.requestPayload,
-        section: args.section,
-        sectionNumber: args.shell,
-        totalSections: args.total,
-      }),
-    });
+  let warning = "The section request failed unexpectedly.";
 
-    return await readJsonResponse<SectionApiResponse>(
-      sectionResponse,
-      `Shell ${args.shell} request`,
-    );
-  } catch (error) {
-    const warning =
-      error instanceof Error ? error.message : "The section request failed unexpectedly.";
+  for (let attempt = 0; attempt <= SECTION_RETRY_DELAYS_MS.length; attempt += 1) {
+    try {
+      const sectionResponse = await fetch("/api/cannon/section", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          request: args.requestPayload,
+          section: args.section,
+          sectionNumber: args.shell,
+          totalSections: args.total,
+        }),
+        cache: "no-store",
+      });
 
-    return {
-      ok: true,
-      section: {
-        title: args.section.title,
-        content: JAMMED_SECTION_CONTENT,
-      },
-      shell: args.shell,
-      total: args.total,
-      placeholder: true,
-      warning,
-    };
+      return await readJsonResponse<SectionApiResponse>(
+        sectionResponse,
+        `Shell ${args.shell} request`,
+      );
+    } catch (error) {
+      warning =
+        error instanceof Error ? error.message : "The section request failed unexpectedly.";
+
+      const retryDelay = SECTION_RETRY_DELAYS_MS[attempt];
+      if (retryDelay && shouldRetrySectionError(warning)) {
+        args.onRetry?.(
+          `Shell ${args.shell} connection hiccup: ${warning}. Re-pressurizing in ${Math.round(
+            retryDelay / 1000,
+          )}s...`,
+        );
+        await sleep(retryDelay);
+        continue;
+      }
+
+      break;
+    }
   }
+
+  return {
+    ok: true,
+    section: {
+      title: args.section.title,
+      content: JAMMED_SECTION_CONTENT,
+    },
+    shell: args.shell,
+    total: args.total,
+    placeholder: true,
+    warning,
+  };
 }
 
 async function readJsonResponse<T>(response: Response, label: string): Promise<T> {
@@ -405,6 +445,9 @@ export default function Home() {
           section,
           shell,
           total,
+          onRetry: (message) => {
+            setLogs((current) => [...current, message]);
+          },
         });
 
         if (!sectionResult.ok) {

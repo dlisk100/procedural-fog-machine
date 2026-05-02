@@ -622,7 +622,6 @@ export default function Home() {
   const [metrics, setMetrics] = useState<MetricState>(INITIAL_METRICS);
   const [logs, setLogs] = useState<string[]>(["Procedural munitions armed."]);
   const [sections, setSections] = useState<GeneratedPreviewSection[]>([]);
-  const [finalHtml, setFinalHtml] = useState("");
   const [isGenerating, setIsGenerating] = useState(false);
   const [error, setError] = useState("");
   const [completionMessage, setCompletionMessage] = useState("");
@@ -679,7 +678,6 @@ export default function Home() {
     setMetrics(INITIAL_METRICS);
     setLogs(["Procedural munitions armed."]);
     setSections([]);
-    setFinalHtml("");
     setError("");
     setCompletionMessage("");
     setCopyMessage("");
@@ -1096,7 +1094,6 @@ export default function Home() {
         setLogs((current) => [...current, "Quadrupling procedural surface area."]);
       }
 
-      setFinalHtml("client-preview");
       setPacketMetadata(COMPLETE_PACKET_METADATA);
       setCompletionMessage("Cannon discharged. Bureaucracy deployed.");
       setLogs((current) => [...current, "Cannon discharged. Bureaucracy deployed."]);
@@ -1147,35 +1144,33 @@ export default function Home() {
           </div>
         </header>
 
-        {isGenerating || sections.length > 0 || finalHtml || error || completionMessage ? (
-          <section className="sticky-status no-print sticky top-0 z-50 w-full self-start border border-stone-700/80 bg-[#15130f] shadow-[0_14px_36px_rgba(0,0,0,0.36)] backdrop-blur">
-            <div className="grid gap-3 px-3 py-3 lg:grid-cols-[minmax(220px,1.05fr)_minmax(0,2fr)] lg:items-center">
-              <div>
-                <p className="font-mono text-[10px] font-bold uppercase tracking-[0.18em] text-stone-500">
-                  Cannon Status
-                </p>
-                <p className="mt-1 text-base font-black text-stone-50">{liveStatus}</p>
-                <p className="mt-1 font-mono text-xs uppercase tracking-[0.14em] text-amber-300">
-                  {statusLine}
-                </p>
-              </div>
-              <div className="grid grid-cols-2 gap-2 sm:grid-cols-5">
-                <CompactMetric
-                  label="Progress"
-                  value={
-                    shellProgress
-                      ? `${shellProgress.label} ${shellProgress.current}/${shellProgress.total}`
-                      : "Ready"
-                  }
-                />
-                <CompactMetric label="Pages" value={String(metrics.pages)} />
-                <CompactMetric label="Admissions" value="0" />
-                <CompactMetric label="Fog" value={`${metrics.fogIndex}/100`} />
-                <CompactMetric label="Review" value={metrics.reviewBurden} />
-              </div>
+        <section className="sticky-status no-print sticky top-0 z-50 w-full self-start border border-stone-700/80 bg-[#15130f] shadow-[0_14px_36px_rgba(0,0,0,0.36)] backdrop-blur">
+          <div className="grid gap-3 px-3 py-3 lg:grid-cols-[minmax(220px,1.05fr)_minmax(0,2fr)] lg:items-center">
+            <div>
+              <p className="font-mono text-[10px] font-bold uppercase tracking-[0.18em] text-stone-500">
+                Cannon Status
+              </p>
+              <p className="mt-1 text-base font-black text-stone-50">{liveStatus}</p>
+              <p className="mt-1 font-mono text-xs uppercase tracking-[0.14em] text-amber-300">
+                {statusLine}
+              </p>
             </div>
-          </section>
-        ) : null}
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-5">
+              <CompactMetric
+                label="Progress"
+                value={
+                  shellProgress
+                    ? `${shellProgress.label} ${shellProgress.current}/${shellProgress.total}`
+                    : "Ready"
+                }
+              />
+              <CompactMetric label="Pages" value={String(metrics.pages)} />
+              <CompactMetric label="Admissions" value="0" />
+              <CompactMetric label="Fog" value={`${metrics.fogIndex}/100`} />
+              <CompactMetric label="Review" value={metrics.reviewBurden} />
+            </div>
+          </div>
+        </section>
 
         <div className="grid gap-5">
           <section className="no-print border border-stone-700 bg-[#211d17] shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]">
@@ -1366,7 +1361,13 @@ export default function Home() {
                   value={slopDensity}
                   onChange={(event) => setSlopDensity(Number(event.target.value))}
                   disabled={isGenerating}
-                  className="h-2 w-full accent-amber-300 disabled:opacity-60"
+                  className="density-slider h-2 w-full appearance-none disabled:opacity-60"
+                  style={
+                    {
+                      "--density-fill": `${(Math.min(slopDensity, 10) / 11) * 100}%`,
+                      "--density-visible-end": `${(10 / 11) * 100}%`,
+                    } as React.CSSProperties
+                  }
                 />
               </label>
 
@@ -1380,7 +1381,7 @@ export default function Home() {
                 type="button"
                 onClick={fireFogMachine}
                 disabled={isGenerating}
-                className="flex min-h-16 w-full items-center justify-between gap-4 border border-amber-200 bg-amber-300 px-5 py-4 text-left text-base font-black uppercase tracking-[0.12em] text-stone-950 shadow-[6px_6px_0_rgba(120,53,15,0.55)] transition hover:-translate-y-0.5 hover:bg-amber-200 active:translate-x-1 active:translate-y-1 active:shadow-none disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0 lg:col-span-2"
+                className="flex min-h-16 w-full items-center justify-between gap-4 border border-amber-200 bg-amber-300 px-5 py-4 text-left text-base font-black uppercase tracking-[0.12em] text-stone-950 shadow-[6px_6px_0_rgba(120,53,15,0.55)] transition hover:-translate-y-0.5 hover:bg-amber-200 active:translate-x-1 active:translate-y-1 active:shadow-none disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0 lg:col-span-12"
               >
                 <span>{isGenerating ? "FIRING SHELLS..." : "FIRE THE SLOP CANNON"}</span>
                 <Image

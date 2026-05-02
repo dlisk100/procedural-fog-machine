@@ -28,7 +28,9 @@ body {
 html,
 body {
   min-height: 100%;
-  overflow-y: auto;
+}
+
+html {
   scrollbar-gutter: stable;
 }
 
@@ -79,6 +81,52 @@ input {
 .sticky-status {
   position: sticky;
   top: 0;
+  z-index: 80;
+}
+
+.density-slider {
+  border-radius: 999px;
+  background:
+    linear-gradient(
+      to right,
+      #eab308 0%,
+      #eab308 var(--density-fill),
+      #e7e5e4 var(--density-fill),
+      #e7e5e4 var(--density-visible-end),
+      transparent var(--density-visible-end),
+      transparent 100%
+    );
+}
+
+.density-slider::-webkit-slider-runnable-track {
+  height: 0.5rem;
+  border-radius: 999px;
+  background: transparent;
+}
+
+.density-slider::-moz-range-track {
+  height: 0.5rem;
+  border-radius: 999px;
+  background: transparent;
+}
+
+.density-slider::-webkit-slider-thumb {
+  width: 2rem;
+  height: 2rem;
+  margin-top: -0.75rem;
+  appearance: none;
+  border-radius: 999px;
+  background: #f5f5f4;
+  box-shadow: 0 1px 5px rgba(0, 0, 0, 0.3);
+}
+
+.density-slider::-moz-range-thumb {
+  width: 2rem;
+  height: 2rem;
+  border: 0;
+  border-radius: 999px;
+  background: #f5f5f4;
+  box-shadow: 0 1px 5px rgba(0, 0, 0, 0.3);
 }
 
 @page {

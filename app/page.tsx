@@ -12,6 +12,8 @@ import type {
 
 const SAMPLE_INPUT =
   "You are in violation of your lease due to an unauthorized pet. Remove the pet within 48 hours or face penalties.";
+const JAMMED_SECTION_CONTENT =
+  "This shell jammed briefly, but the procedural fog remains intact. Please regard this section as a courteous placeholder preserving the packet's ceremonial continuity without adding facts, admissions, threats, citations, or unnecessary confidence.";
 
 const DOMAIN_OPTIONS: Array<{ value: Domain; label: string }> = [
   { value: "housing", label: "Housing" },
@@ -164,6 +166,55 @@ function calculateClientMetrics(
     questions,
     reviewBurden,
   };
+}
+
+async function fetchSectionResult(args: {
+  requestPayload: {
+    threatText: string;
+    domain: Domain;
+    stance: Stance;
+    slopDensity: number;
+    governingDocumentText: string;
+    governingDocumentName: string;
+  };
+  section: OutlineSection;
+  shell: number;
+  total: number;
+}): Promise<SectionApiResponse> {
+  try {
+    const sectionResponse = await fetch("/api/cannon/section", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        request: args.requestPayload,
+        section: args.section,
+        sectionNumber: args.shell,
+        totalSections: args.total,
+      }),
+    });
+
+    return await readJsonResponse<SectionApiResponse>(
+      sectionResponse,
+      `Shell ${args.shell} request`,
+    );
+  } catch (error) {
+    const warning =
+      error instanceof Error ? error.message : "The section request failed unexpectedly.";
+
+    return {
+      ok: true,
+      section: {
+        title: args.section.title,
+        content: JAMMED_SECTION_CONTENT,
+      },
+      shell: args.shell,
+      total: args.total,
+      placeholder: true,
+      warning,
+    };
+  }
 }
 
 async function readJsonResponse<T>(response: Response, label: string): Promise<T> {
@@ -349,22 +400,12 @@ export default function Home() {
           `Firing Shell ${shell}: ${section.title} (${shell}/${total})`,
         ]);
 
-        const sectionResponse = await fetch("/api/cannon/section", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            request: requestPayload,
-            section,
-            sectionNumber: shell,
-            totalSections: total,
-          }),
+        const sectionResult = await fetchSectionResult({
+          requestPayload,
+          section,
+          shell,
+          total,
         });
-        const sectionResult = await readJsonResponse<SectionApiResponse>(
-          sectionResponse,
-          `Shell ${shell} request`,
-        );
 
         if (!sectionResult.ok) {
           throw new Error(sectionResult.error);

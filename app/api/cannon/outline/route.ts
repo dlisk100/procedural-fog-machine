@@ -1,10 +1,11 @@
 import { NextResponse } from "next/server";
 import { fallbackOutline, parseOutlineJson, validateCannonRequest } from "@/lib/cannon";
 import { callOpenRouter, OPENROUTER_OUTLINE_MODEL } from "@/lib/openrouter";
-import { buildOutlinePrompt } from "@/lib/prompts";
+import { buildOutlinePrompt, OUTLINE_SYSTEM_MESSAGE } from "@/lib/prompts";
 
+export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-export const maxDuration = 60;
+export const maxDuration = 300;
 
 export async function POST(request: Request) {
   try {
@@ -32,8 +33,7 @@ export async function POST(request: Request) {
         [
           {
             role: "system",
-            content:
-              "You generate safe comedy bureaucracy. Return exactly what the user asks for, without legal advice, fake citations, threats, or attorney impersonation.",
+            content: OUTLINE_SYSTEM_MESSAGE,
           },
           {
             role: "user",

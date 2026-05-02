@@ -14,6 +14,7 @@ import type {
   Stance,
 } from "@/lib/types";
 
+export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
 

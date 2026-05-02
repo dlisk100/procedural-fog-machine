@@ -1,38 +1,11 @@
 import type { CannonRequest, OutlineSection } from "./types";
+import { getBaseGenerationDensity, getDensityConfig } from "./density";
 
-const SECTION_COUNT_BY_DENSITY = [
-  { min: 1, max: 2, sections: 5, targetWords: 350 },
-  { min: 3, max: 4, sections: 8, targetWords: 600 },
-  { min: 5, max: 6, sections: 12, targetWords: 900 },
-  { min: 7, max: 8, sections: 16, targetWords: 1300 },
-  { min: 9, max: 10, sections: 24, targetWords: 1800 },
-] as const;
+export const OUTLINE_SYSTEM_MESSAGE =
+  "You are the packet architect for The Procedural Fog Machine, a comedy-powered bureaucracy generator. You create safe, absurdist, legal-adjacent response packet outlines for scary landlord, workplace, school, insurance, vendor, platform, and administrative messages.\nYour style is: municipal zoning board meets malfunctioning compliance department meets overfunded corporate risk committee.\nYou do not provide legal advice. You do not invent laws, citations, statutes, case names, policy numbers, contract terms, facts, deadlines, or obligations. You do not threaten anyone or impersonate an attorney.\nReturn only the requested JSON. The comedy should come from procedural overkill, non-admission language, excessive clarification requests, definitional fog, and bizarre administrative seriousness.";
 
-function clampSlopDensity(slopDensity: number): number {
-  if (!Number.isFinite(slopDensity)) {
-    return 5;
-  }
-
-  return Math.min(10, Math.max(1, Math.round(slopDensity)));
-}
-
-function getDensityPlan(slopDensity: number): {
-  density: number;
-  sections: number;
-  targetWords: number;
-} {
-  const density = clampSlopDensity(slopDensity);
-  const plan =
-    SECTION_COUNT_BY_DENSITY.find(
-      (item) => density >= item.min && density <= item.max,
-    ) ?? SECTION_COUNT_BY_DENSITY[2];
-
-  return {
-    density,
-    sections: plan.sections,
-    targetWords: plan.targetWords,
-  };
-}
+export const SECTION_SYSTEM_MESSAGE =
+  "You are the prose engine for The Procedural Fog Machine. You write safe, polite, non-admitting, absurdly over-formal bureaucracy.\nThe output should feel like a 19-word notice was routed through a municipal hearings office, a corporate compliance department, and a deranged appendix committee.\nYou do not give legal advice. You do not invent laws, citations, statutes, case names, policy numbers, quoted contract terms, facts, deadlines, or obligations. You do not threaten anyone or impersonate an attorney.\nBe funny through formality, recursion, caveats, definitions, subclauses, procedural fog, and overwhelming administrative politeness. Do not be jokey. Do not break character. Do not say you are an AI.";
 
 function optionalGoverningDocumentText(request: CannonRequest): string {
   if (!request.governingDocumentText?.trim()) {
@@ -53,7 +26,8 @@ ${request.governingDocumentText.trim()}
 }
 
 export function buildOutlinePrompt(request: CannonRequest): string {
-  const densityPlan = getDensityPlan(request.slopDensity);
+  const requestedDensity = getDensityConfig(request.slopDensity).density;
+  const densityPlan = getDensityConfig(getBaseGenerationDensity(request.slopDensity));
 
   return `You are generating the outline for The Procedural Fog Machine, a comedy-powered drafting support tool. Return valid JSON only. Do not wrap the response in markdown. Do not include comments, prose before the JSON, or prose after the JSON.
 
@@ -96,10 +70,27 @@ Rules:
 - If citing the uploaded document, phrase cautiously: "Based on the provided document text..."
 - Do not claim a definitive legal interpretation.
 
+Style requirements:
+- Section titles should sound plausible, bureaucratic, and faintly ridiculous.
+- Avoid generic titles unless they are made ceremonially excessive.
+- Prefer titles like:
+  - Preliminary Non-Admission and Threshold Clarification Preamble
+  - Request for Identification of the Operative Provision, Policy, Clause, Rule, Custom, Practice, or Other Alleged Source of Authority
+  - Evidentiary Sufficiency and Documentation Preservation Concerns
+  - Chronology Stabilization and Timeline Reconciliation Protocol
+  - Non-Exhaustive Clarifying Inquiry Register
+  - Administrative Burden Allocation and Response Procedure Concerns
+  - Reservation of Position Without Waiver, Admission, Adoption, Ratification, or Interpretive Concession
+- The outline should create a document that is procedurally overwhelming but still polite and safe.
+- At high Slop Density, include appendices, matrices, glossaries, registers, schedules, and ceremonial exhibits.
+- Each section should have a distinct procedural purpose.
+- The packet should escalate through bureaucracy, not aggression.
+
 Inputs:
 - Domain: ${request.domain}
 - Stance: ${request.stance}
-- Slop Density: ${densityPlan.density} out of 10
+- Slop Density: ${requestedDensity} out of 11
+- Base generation density for this outline: ${densityPlan.density} out of 10
 - Threat/admin message:
 ${request.threatText.trim()}
 
@@ -123,7 +114,8 @@ export function buildSectionPrompt(args: {
   totalSections: number;
 }): string {
   const { request, section, sectionNumber, totalSections } = args;
-  const densityPlan = getDensityPlan(request.slopDensity);
+  const requestedDensity = getDensityConfig(request.slopDensity).density;
+  const densityPlan = getDensityConfig(getBaseGenerationDensity(request.slopDensity));
   const mustInclude = section.mustInclude?.length
     ? section.mustInclude.join("; ")
     : "No special required items beyond the section purpose.";
@@ -140,7 +132,8 @@ Target length: about ${section.targetWords || densityPlan.targetWords} words
 Inputs:
 - Domain: ${request.domain}
 - Stance: ${request.stance}
-- Slop Density: ${densityPlan.density} out of 10
+- Slop Density: ${requestedDensity} out of 11
+- Base generation density for this section: ${densityPlan.density} out of 10
 - Threat/admin message:
 ${request.threatText.trim()}
 
@@ -162,6 +155,33 @@ ${mustInclude}
 Must avoid:
 ${mustAvoid}
 
+Bureaucratic slop style guide:
+- Use legal-adjacent phrasing without pretending to give legal advice.
+- Prefer phrases like:
+  - without admission
+  - for avoidance of doubt
+  - threshold clarification
+  - non-exhaustive
+  - procedural sufficiency
+  - evidentiary basis
+  - operative provision
+  - good-faith administrative review
+  - preservation of position
+  - subject to clarification
+  - pending identification of the factual predicate
+  - without waiver
+  - to the extent applicable
+  - for the limited purpose of response organization
+- Make the prose funny through extreme procedural seriousness.
+- Use recursive caveats, parentheticals, nested clarifications, and deadpan over-specificity.
+- Ask clarifying questions when useful, but do not overuse question marks in every paragraph.
+- Include definitional fog, such as carefully defining ordinary terms in unnecessary ways.
+- Make at least some sentences comically overbuilt, while keeping the section readable.
+- Do not write like a normal helpful assistant.
+- Do not summarize too cleanly.
+- Do not become concise unless Slop Density is very low.
+- Do not include fake citations, fake legal authority, or invented lease/contract language.
+
 Writing rules:
 - Write only this section's body text.
 - Use plain paragraphs, not markdown.
@@ -176,5 +196,53 @@ Writing rules:
 - Keep everything polite, absurdly bureaucratic, and non-admitting.
 - Optimize for comedy and procedural fog: careful caveats, ceremonial sub-clauses, politely redundant requests, compliance theater, and administrative foghorn energy.
 - Ask for evidence or clarification when useful, but do not assert facts that are not in the user's input.
-- Preserve rights in a general, non-legal-advice way.`;
+- Preserve rights in a general, non-legal-advice way.
+- End the section with either a non-admission reservation, a request for clarification, a procedural transition to further review, or a ceremonial statement that additional inquiry remains necessary.
+- Do not end with a normal conclusion like "In conclusion."`;
+}
+
+export function buildInflatePrompt(args: {
+  request: CannonRequest;
+  sectionTitle: string;
+  sectionContent: string;
+  addendumNumber: number;
+}): string {
+  const { request, sectionTitle, sectionContent, addendumNumber } = args;
+
+  return `Write a supplemental addendum to the following already-generated section of The Procedural Fog Machine.
+
+Original section title:
+"""
+${sectionTitle}
+"""
+
+Original section body:
+"""
+${sectionContent}
+"""
+
+Addendum number: ${addendumNumber}
+
+Inputs:
+- Domain: ${request.domain}
+- Stance: ${request.stance}
+- Threat/admin message:
+${request.threatText.trim()}
+
+${optionalGoverningDocumentText(request)}
+
+The addendum should not replace the section. It should extend it with additional procedural fog, caveats, definitional nuance, clarifying questions, and administrative over-specificity.
+Target length: about 1,500 words.
+
+Rules:
+- Do not add new factual claims.
+- Do not invent laws, citations, statutes, policies, contract clauses, dates, obligations, or legal interpretations.
+- Do not impersonate an attorney.
+- Do not threaten anyone.
+- Do not advise ignoring deadlines.
+- Be polite, formal, non-admitting, and absurdly bureaucratic.
+- The comedy should come from excess formality and procedural over-construction.
+- Make this feel like a second volley from the appendix artillery.
+- If using uploaded document context, only reference text that is directly present and phrase cautiously: "Based on the provided document text..."
+- Use plain text only.`;
 }

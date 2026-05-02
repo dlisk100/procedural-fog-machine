@@ -1,9 +1,11 @@
 import { NextResponse } from "next/server";
 import { JAMMED_SECTION_CONTENT, validateCannonRequest } from "@/lib/cannon";
+import { getBaseGenerationDensity, getDensityConfig } from "@/lib/density";
 import { callOpenRouter, OPENROUTER_SECTION_MODEL } from "@/lib/openrouter";
-import { buildSectionPrompt } from "@/lib/prompts";
+import { buildSectionPrompt, SECTION_SYSTEM_MESSAGE } from "@/lib/prompts";
 import type { OutlineSection } from "@/lib/types";
 
+export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
 
@@ -68,6 +70,7 @@ export async function POST(request: Request) {
     console.info(
       `[cannon:section] start shell=${sectionNumber}/${totalSections} model=${OPENROUTER_SECTION_MODEL} promptChars=${prompt.length} targetWords=${section.targetWords}`,
     );
+    const densityConfig = getDensityConfig(getBaseGenerationDensity(cannonRequest.slopDensity));
 
     try {
       const startedAt = Date.now();
@@ -75,8 +78,7 @@ export async function POST(request: Request) {
         [
           {
             role: "system",
-            content:
-              "You write safe, polite, non-admitting comedy bureaucracy. Do not give legal advice, invent citations, threaten, fabricate facts, or impersonate an attorney.",
+            content: SECTION_SYSTEM_MESSAGE,
           },
           {
             role: "user",
@@ -86,7 +88,7 @@ export async function POST(request: Request) {
         {
           model: OPENROUTER_SECTION_MODEL,
           temperature: 0.84,
-          maxTokens: 2400,
+          maxTokens: densityConfig.sectionMaxTokens,
           timeoutMs: 260_000,
         },
       );

@@ -4,9 +4,10 @@ import type { ParsedPdfResponse } from "@/lib/types";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+export const maxDuration = 300;
 
-const MAX_FILE_SIZE = 10 * 1024 * 1024;
-const MAX_EXTRACTED_CHARS = 60_000;
+const MAX_FILE_SIZE = 4 * 1024 * 1024;
+const MAX_EXTRACTED_CHARS = 30_000;
 
 function jsonResponse(body: ParsedPdfResponse, status = 200) {
   return NextResponse.json(body, { status });
@@ -30,7 +31,7 @@ export async function POST(req: Request) {
 
     if (file.size > MAX_FILE_SIZE) {
       return jsonResponse(
-        { ok: false, error: "PDF is too large. Max size is 10 MB." },
+        { ok: false, error: "PDF is too large. Max size is 4 MB on the hosted demo." },
         400,
       );
     }

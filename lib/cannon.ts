@@ -6,9 +6,10 @@ import type {
   OutlineSection,
   Stance,
 } from "./types";
+import { clampSlopDensity, getBaseGenerationDensity, getDensityConfig } from "./density";
 
 export const MAX_INPUT_LENGTH = 20_000;
-export const MAX_GOVERNING_DOCUMENT_LENGTH = 60_000;
+export const MAX_GOVERNING_DOCUMENT_LENGTH = 30_000;
 export const MAX_SECTIONS = 24;
 export const JAMMED_SECTION_CONTENT =
   "This shell jammed briefly, but the procedural fog remains intact. Please regard this section as a courteous placeholder preserving the packet's ceremonial continuity without adding facts, admissions, threats, citations, or unnecessary confidence.";
@@ -82,7 +83,7 @@ export function validateCannonRequest(value: unknown): CannonRequest {
     throw new Error("slopDensity must be a number.");
   }
 
-  const slopDensity = Math.min(10, Math.max(1, rawSlopDensity));
+  const slopDensity = clampSlopDensity(rawSlopDensity);
   const governingDocumentText =
     typeof input.governingDocumentText === "string" &&
     input.governingDocumentText.trim().length > 0
@@ -168,23 +169,7 @@ function safeParseJsonObject(input: string): unknown {
 }
 
 export function densityTargetWords(slopDensity: number): number {
-  if (slopDensity <= 2) {
-    return 350;
-  }
-
-  if (slopDensity <= 4) {
-    return 600;
-  }
-
-  if (slopDensity <= 6) {
-    return 900;
-  }
-
-  if (slopDensity <= 8) {
-    return 1300;
-  }
-
-  return 1800;
+  return getDensityConfig(getBaseGenerationDensity(slopDensity)).targetWords;
 }
 
 export function fallbackOutline(request: CannonRequest): CannonOutline {

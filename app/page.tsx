@@ -83,6 +83,27 @@ type SectionApiResponse =
       error: string;
     };
 
+type InflateApiResponse =
+  | {
+      ok: true;
+      addendum: GeneratedSection;
+      placeholder: boolean;
+      warning?: string;
+    }
+  | {
+      ok: false;
+      error: string;
+    };
+
+type CannonRequestPayload = {
+  threatText: string;
+  domain: Domain;
+  stance: Stance;
+  slopDensity: number;
+  governingDocumentText: string;
+  governingDocumentName: string;
+};
+
 const INITIAL_METRICS: MetricState = {
   pages: 0,
   admissions: 0,
@@ -92,6 +113,10 @@ const INITIAL_METRICS: MetricState = {
 };
 
 function getDensityLabel(value: number): string {
+  if (value === 11) {
+    return "This one goes to eleven";
+  }
+
   if (value <= 2) {
     return "Human-ish";
   }
@@ -190,14 +215,7 @@ function calculateClientMetrics(
 }
 
 async function fetchSectionResult(args: {
-  requestPayload: {
-    threatText: string;
-    domain: Domain;
-    stance: Stance;
-    slopDensity: number;
-    governingDocumentText: string;
-    governingDocumentName: string;
-  };
+  requestPayload: CannonRequestPayload;
   section: OutlineSection;
   shell: number;
   total: number;
@@ -257,6 +275,69 @@ async function fetchSectionResult(args: {
   };
 }
 
+async function fetchInflateResult(args: {
+  requestPayload: CannonRequestPayload;
+  section: GeneratedPreviewSection;
+  sectionNumber: number;
+  addendumNumber: number;
+  onRetry?: (message: string) => void;
+}): Promise<InflateApiResponse> {
+  let warning = "The second-volley request failed unexpectedly.";
+
+  for (let attempt = 0; attempt <= SECTION_RETRY_DELAYS_MS.length; attempt += 1) {
+    try {
+      const response = await fetch("/api/cannon/inflate", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          threatText: args.requestPayload.threatText,
+          domain: args.requestPayload.domain,
+          stance: args.requestPayload.stance,
+          governingDocumentText: args.requestPayload.governingDocumentText,
+          governingDocumentName: args.requestPayload.governingDocumentName,
+          sectionTitle: args.section.title,
+          sectionContent: args.section.content,
+          addendumNumber: args.addendumNumber,
+        }),
+        cache: "no-store",
+      });
+
+      return await readJsonResponse<InflateApiResponse>(
+        response,
+        `Inflation request ${args.sectionNumber}`,
+      );
+    } catch (error) {
+      warning =
+        error instanceof Error ? error.message : "The second-volley request failed unexpectedly.";
+
+      const retryDelay = SECTION_RETRY_DELAYS_MS[attempt];
+      if (retryDelay && shouldRetrySectionError(warning)) {
+        args.onRetry?.(
+          `Inflation volley ${args.sectionNumber} connection hiccup: ${warning}. Re-pressurizing in ${Math.round(
+            retryDelay / 1000,
+          )}s...`,
+        );
+        await sleep(retryDelay);
+        continue;
+      }
+
+      break;
+    }
+  }
+
+  return {
+    ok: true,
+    addendum: {
+      title: `Supplemental Addendum ${args.addendumNumber}: Additional Procedural Fog for ${args.section.title}`,
+      content: JAMMED_SECTION_CONTENT,
+    },
+    placeholder: true,
+    warning,
+  };
+}
+
 async function readJsonResponse<T>(response: Response, label: string): Promise<T> {
   const text = await response.text();
 
@@ -284,6 +365,7 @@ export default function Home() {
   const [error, setError] = useState("");
   const [completionMessage, setCompletionMessage] = useState("");
   const [copyMessage, setCopyMessage] = useState("");
+  const [pdfExportMessage, setPdfExportMessage] = useState("");
   const [selectedPdfFile, setSelectedPdfFile] = useState<File | null>(null);
   const [governingDocumentText, setGoverningDocumentText] = useState("");
   const [governingDocumentName, setGoverningDocumentName] = useState("");
@@ -312,6 +394,7 @@ export default function Home() {
     setError("");
     setCompletionMessage("");
     setCopyMessage("");
+    setPdfExportMessage("");
     setShellProgress(null);
   }
 
@@ -329,6 +412,50 @@ export default function Home() {
       setCopyMessage("Generated packet text copied.");
     } catch {
       setCopyMessage("Copy failed. Browser clipboard permission may be unavailable.");
+    }
+  }
+
+  async function downloadCeremonialPdf() {
+    if (sections.length === 0) {
+      return;
+    }
+
+    setPdfExportMessage("PDF cannon warming ceremonial rollers...");
+
+    try {
+      const response = await fetch("/api/export-pdf", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          title: "Procedural Response Packet",
+          sections,
+          metrics: {
+            pages: metrics.pages,
+            questions: metrics.questions,
+            fogIndex: metrics.fogIndex,
+            reviewBurden: metrics.reviewBurden,
+          },
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error(await response.text());
+      }
+
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = "procedural-fog-packet.pdf";
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+      setPdfExportMessage("Ceremonial PDF downloaded.");
+    } catch {
+      setPdfExportMessage("PDF cannon jammed. Use browser Print / Save as PDF fallback.");
     }
   }
 
@@ -466,6 +593,60 @@ export default function Home() {
         setMetrics(calculateClientMetrics(generatedSections, shell / total));
       }
 
+      if (slopDensity === 11) {
+        setLogs((current) => [
+          ...current,
+          "Second volley authorized.",
+          "Re-chambering the Appendix Goblin.",
+        ]);
+
+        const inflatedSections: GeneratedPreviewSection[] = [];
+
+        for (let index = 0; index < generatedSections.length; index += 1) {
+          const section = generatedSections[index];
+          inflatedSections.push(section);
+
+          setLogs((current) => [
+            ...current,
+            `Inflating Section ${index + 1} beyond reasonable administrative necessity.`,
+            "Deploying supplemental non-admission vapor.",
+          ]);
+
+          const inflateResult = await fetchInflateResult({
+            requestPayload,
+            section,
+            sectionNumber: index + 1,
+            addendumNumber: index + 1,
+            onRetry: (message) => {
+              setLogs((current) => [...current, message]);
+            },
+          });
+
+          if (!inflateResult.ok) {
+            throw new Error(inflateResult.error);
+          }
+
+          if (inflateResult.placeholder && inflateResult.warning) {
+            setLogs((current) => [
+              ...current,
+              `Second-volley addendum ${index + 1} jammed briefly: ${inflateResult.warning}`,
+            ]);
+          }
+
+          inflatedSections.push(inflateResult.addendum);
+          setSections([...inflatedSections]);
+          setMetrics(
+            calculateClientMetrics(
+              inflatedSections,
+              (generatedSections.length + index + 1) / (generatedSections.length * 2),
+            ),
+          );
+        }
+
+        generatedSections.splice(0, generatedSections.length, ...inflatedSections);
+        setLogs((current) => [...current, "Quadrupling procedural surface area."]);
+      }
+
       setFinalHtml("client-preview");
       setCompletionMessage("Cannon discharged. Bureaucracy deployed.");
       setLogs((current) => [...current, "Cannon discharged. Bureaucracy deployed."]);
@@ -574,7 +755,8 @@ export default function Home() {
                   </h3>
                   <p className="mt-1 text-sm leading-6 text-stone-400">
                     Optional: upload a lease, policy, contract, or notice. Selectable-text
-                    PDFs work best. No OCR.
+                    PDFs work best. No OCR. Max 4 MB on the hosted demo. For larger
+                    documents, paste the relevant excerpts manually.
                   </p>
                 </div>
 
@@ -699,13 +881,13 @@ export default function Home() {
                 <span className="flex items-center justify-between gap-3 text-sm font-semibold text-stone-200">
                   <span>Slop Density</span>
                   <span className="font-mono text-amber-200">
-                    {slopDensity}/10, {densityLabel}
+                    {slopDensity}/11, {densityLabel}
                   </span>
                 </span>
                 <input
                   type="range"
                   min="1"
-                  max="10"
+                  max="11"
                   value={slopDensity}
                   onChange={(event) => setSlopDensity(Number(event.target.value))}
                   disabled={isGenerating}
@@ -748,7 +930,7 @@ export default function Home() {
                     onClick={() => window.print()}
                     className="border border-amber-300 px-4 py-3 text-sm font-bold uppercase tracking-[0.12em] text-amber-200 transition hover:bg-amber-300 hover:text-stone-950 active:translate-y-[1px]"
                   >
-                    Print / Export
+                    Export Ceremonial PDF
                   </button>
                 ) : null}
               </div>
@@ -816,10 +998,23 @@ export default function Home() {
                   >
                     Copy Plain Text
                   </button>
+                  <button
+                    type="button"
+                    onClick={downloadCeremonialPdf}
+                    disabled={sections.length === 0}
+                    className="border border-stone-700 bg-[#fffaf0] px-3 py-2 text-xs font-black uppercase tracking-[0.12em] text-stone-950 transition hover:bg-amber-200 active:translate-y-[1px] disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    Download Ceremonial PDF
+                  </button>
                 </div>
                 {copyMessage ? (
                   <p className="no-print mb-3 border border-stone-500 bg-[#fffaf0] px-3 py-2 text-sm font-bold text-stone-900">
                     {copyMessage}
+                  </p>
+                ) : null}
+                {pdfExportMessage ? (
+                  <p className="no-print mb-3 border border-stone-500 bg-[#fffaf0] px-3 py-2 text-sm font-bold text-stone-900">
+                    {pdfExportMessage}
                   </p>
                 ) : null}
                 <div className="document-preview mx-auto min-h-[590px] max-w-3xl border border-stone-400 bg-[#fffaf0] px-5 py-6 shadow-[8px_8px_0_rgba(68,64,60,0.22)] sm:px-8">

@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import type { Domain, Stance } from "@/lib/types";
+import type { Domain, ParsedPdfResponse, Stance } from "@/lib/types";
 
 const SAMPLE_INPUT =
   "You are in violation of your lease due to an unauthorized pet. Remove the pet within 48 hours or face penalties.";
@@ -37,6 +37,14 @@ type MetricState = {
 type GeneratedPreviewSection = {
   title: string;
   content: string;
+};
+
+type PdfStatus = "idle" | "extracting" | "extracted" | "error";
+
+type PdfMeta = {
+  totalPages: number;
+  charCount: number;
+  truncated: boolean;
 };
 
 type CannonEvent =
@@ -154,6 +162,13 @@ export default function Home() {
   const [error, setError] = useState("");
   const [completionMessage, setCompletionMessage] = useState("");
   const [copyMessage, setCopyMessage] = useState("");
+  const [selectedPdfFile, setSelectedPdfFile] = useState<File | null>(null);
+  const [governingDocumentText, setGoverningDocumentText] = useState("");
+  const [governingDocumentName, setGoverningDocumentName] = useState("");
+  const [pdfStatus, setPdfStatus] = useState<PdfStatus>("idle");
+  const [pdfWarning, setPdfWarning] = useState("");
+  const [pdfError, setPdfError] = useState("");
+  const [pdfMeta, setPdfMeta] = useState<PdfMeta | null>(null);
   const [shellProgress, setShellProgress] = useState<{ current: number; total: number } | null>(
     null,
   );
@@ -265,6 +280,51 @@ export default function Home() {
     }
   }
 
+  async function handlePdfUpload(file: File) {
+    setPdfStatus("extracting");
+    setPdfError("");
+    setPdfWarning("");
+    setPdfMeta(null);
+    setGoverningDocumentName(file.name);
+
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+
+      const response = await fetch("/api/parse-pdf", {
+        method: "POST",
+        body: formData,
+      });
+      const result = (await response.json()) as ParsedPdfResponse;
+
+      if (!result.ok) {
+        setPdfStatus("error");
+        setPdfError("The Fog Machine choked on this PDF. Paste text manually and continue.");
+        setLogs((current) => [...current, `PDF parsing note: ${result.error}`]);
+        return;
+      }
+
+      setGoverningDocumentText(result.text);
+      setGoverningDocumentName(result.filename);
+      setPdfMeta({
+        totalPages: result.totalPages,
+        charCount: result.charCount,
+        truncated: result.truncated,
+      });
+      setPdfWarning(
+        result.warning
+          ? result.text.length < 300
+            ? "Selectable text was thin. The document may be scanned. Manual paste recommended."
+            : result.warning
+          : "",
+      );
+      setPdfStatus("extracted");
+    } catch {
+      setPdfStatus("error");
+      setPdfError("The Fog Machine choked on this PDF. Paste text manually and continue.");
+    }
+  }
+
   async function fireFogMachine() {
     if (threatText.trim().length < 5) {
       setError("Paste at least five characters so the machine has something to over-process.");
@@ -287,6 +347,8 @@ export default function Home() {
           domain,
           stance,
           slopDensity,
+          governingDocumentText,
+          governingDocumentName,
         }),
       });
 
@@ -434,6 +496,100 @@ export default function Home() {
                   placeholder="Paste the threatening portal message, stern landlord note, compliance memo, or suspiciously confident administrative thunderclap."
                 />
               </label>
+
+              <section className="grid gap-3 border border-stone-700 bg-stone-950/45 p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]">
+                <div>
+                  <h3 className="text-base font-black tracking-tight text-stone-100">
+                    Optional Fog Fuel
+                  </h3>
+                  <p className="mt-1 text-sm leading-6 text-stone-400">
+                    Optional: upload a lease, policy, contract, or notice. Selectable-text
+                    PDFs work best. No OCR.
+                  </p>
+                </div>
+
+                <label className="grid gap-2">
+                  <span className="text-sm font-semibold text-stone-200">
+                    Upload lease / policy / contract PDF
+                  </span>
+                  <input
+                    type="file"
+                    accept=".pdf,application/pdf"
+                    disabled={isGenerating || pdfStatus === "extracting"}
+                    onChange={(event) => {
+                      const file = event.target.files?.[0] ?? null;
+                      setSelectedPdfFile(file);
+                      setPdfStatus("idle");
+                      setPdfError("");
+                      setPdfWarning("");
+                      setPdfMeta(null);
+                      setGoverningDocumentName(file?.name ?? "");
+                    }}
+                    className="w-full border border-stone-600 bg-stone-950/80 px-3 py-2 text-sm text-stone-200 file:mr-3 file:border-0 file:bg-amber-300 file:px-3 file:py-2 file:text-xs file:font-black file:uppercase file:tracking-[0.12em] file:text-stone-950 disabled:cursor-not-allowed disabled:opacity-60"
+                  />
+                </label>
+
+                <div className="grid gap-3 sm:grid-cols-[1fr_auto] sm:items-center">
+                  <p className="font-mono text-xs text-stone-400">
+                    {selectedPdfFile
+                      ? `Selected: ${selectedPdfFile.name}`
+                      : "No PDF selected. Manual paste remains fully authorized."}
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (selectedPdfFile) {
+                        void handlePdfUpload(selectedPdfFile);
+                      }
+                    }}
+                    disabled={!selectedPdfFile || isGenerating || pdfStatus === "extracting"}
+                    className="border border-stone-600 px-3 py-2 text-xs font-black uppercase tracking-[0.12em] text-stone-100 transition hover:border-amber-300 hover:text-amber-200 active:translate-y-[1px] disabled:cursor-not-allowed disabled:opacity-45"
+                  >
+                    {pdfStatus === "extracting" ? "Extracting..." : "Extract PDF Fog Fuel"}
+                  </button>
+                </div>
+
+                <div className="grid gap-2">
+                  <p className="font-mono text-xs uppercase tracking-[0.14em] text-stone-500">
+                    {pdfStatus === "idle"
+                      ? "Idle"
+                      : pdfStatus === "extracting"
+                        ? "Extracting..."
+                        : pdfStatus === "extracted" && pdfMeta
+                          ? `PDF digested: ${pdfMeta.totalPages} pages, ${pdfMeta.charCount.toLocaleString()} characters of procedural nutrients.`
+                          : "PDF extraction needs manual backup."}
+                  </p>
+                  {pdfWarning ? (
+                    <p className="border border-amber-300/40 bg-amber-950/30 px-3 py-2 text-sm text-amber-100">
+                      {pdfWarning}
+                    </p>
+                  ) : null}
+                  {pdfError ? (
+                    <p className="border border-red-300/40 bg-red-950/30 px-3 py-2 text-sm text-red-100">
+                      {pdfError}
+                    </p>
+                  ) : null}
+                </div>
+
+                <label className="grid gap-2">
+                  <span className="text-sm font-semibold text-stone-200">
+                    Extracted governing document text
+                  </span>
+                  <textarea
+                    value={governingDocumentText}
+                    onChange={(event) => {
+                      setGoverningDocumentText(event.target.value);
+                      if (event.target.value.trim() && !governingDocumentName) {
+                        setGoverningDocumentName("Manual governing document context");
+                      }
+                    }}
+                    disabled={isGenerating}
+                    rows={5}
+                    className="min-h-32 resize-y border border-stone-600 bg-stone-950/80 px-3 py-3 text-xs leading-5 text-stone-100 outline-none transition placeholder:text-stone-600 focus:border-amber-300 disabled:cursor-not-allowed disabled:opacity-70"
+                    placeholder="Paste optional lease, policy, contract, notice, or clause text here. The cannon will treat it as user-provided context, not legal authority."
+                  />
+                </label>
+              </section>
 
               <div className="grid gap-4 sm:grid-cols-2">
                 <label className="grid gap-2">

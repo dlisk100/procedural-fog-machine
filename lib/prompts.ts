@@ -36,10 +36,20 @@ function getDensityPlan(slopDensity: number): {
 
 function optionalGoverningDocumentText(request: CannonRequest): string {
   if (!request.governingDocumentText?.trim()) {
-    return "No governing document was provided.";
+    return `Optional governing document context:
+Document name: ${request.governingDocumentName || "None provided"}
+
+"""
+No governing document text provided.
+"""`;
   }
 
-  return request.governingDocumentText.trim();
+  return `Optional governing document context:
+Document name: ${request.governingDocumentName || "None provided"}
+
+"""
+${request.governingDocumentText.trim()}
+"""`;
 }
 
 export function buildOutlinePrompt(request: CannonRequest): string {
@@ -79,6 +89,12 @@ Rules:
 - The packet should ask clarifying questions and preserve rights without asserting facts not supplied by the user.
 - Treat the incoming message as possibly scary, incomplete, exaggerated, or procedurally confusing.
 - Include appendix ideas that are theatrical, administrative, and safe.
+- The uploaded document, if any, is optional context.
+- Only refer to uploaded document details if directly supported by the extracted text.
+- Do not invent section numbers, clauses, dates, obligations, or citations.
+- If the document appears relevant but the exact clause is unclear, ask the sender to identify the applicable clause.
+- If citing the uploaded document, phrase cautiously: "Based on the provided document text..."
+- Do not claim a definitive legal interpretation.
 
 Inputs:
 - Domain: ${request.domain}
@@ -87,8 +103,15 @@ Inputs:
 - Threat/admin message:
 ${request.threatText.trim()}
 
-- Governing document, if any:
 ${optionalGoverningDocumentText(request)}
+
+Rules for governing document:
+- Use this only as user-provided context.
+- Do not invent clause numbers, legal citations, obligations, or facts.
+- Only reference language that appears in the provided text.
+- If the relevant provision is unclear, request that the sender identify the specific provision.
+- Do not claim a definitive legal interpretation.
+- Do not pretend this is legal advice.
 
 Return the JSON object only.`;
 }
@@ -121,8 +144,17 @@ Inputs:
 - Threat/admin message:
 ${request.threatText.trim()}
 
-- Governing document, if any:
 ${optionalGoverningDocumentText(request)}
+
+Rules for governing document:
+- The uploaded document is optional context.
+- Use this only as user-provided context.
+- Do not invent clause numbers, legal citations, obligations, dates, or facts.
+- Only reference language that appears in the provided text.
+- If the relevant provision is unclear, ask the sender to identify the specific provision.
+- If citing the uploaded document, phrase cautiously: "Based on the provided document text..."
+- Do not claim a definitive legal interpretation.
+- Do not pretend this is legal advice.
 
 Must include:
 ${mustInclude}

@@ -22,7 +22,23 @@ export type CannonRequest = {
   stance: Stance;
   slopDensity: number;
   governingDocumentText?: string;
+  governingDocumentName?: string;
 };
+
+export type ParsedPdfResponse =
+  | {
+      ok: true;
+      filename: string;
+      totalPages: number;
+      charCount: number;
+      truncated: boolean;
+      text: string;
+      warning?: string;
+    }
+  | {
+      ok: false;
+      error: string;
+    };
 
 export type OutlineSection = {
   title: string;

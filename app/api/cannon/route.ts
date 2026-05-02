@@ -18,6 +18,7 @@ export const dynamic = "force-dynamic";
 
 const encoder = new TextEncoder();
 const MAX_INPUT_LENGTH = 20_000;
+const MAX_GOVERNING_DOCUMENT_LENGTH = 60_000;
 const MAX_SECTIONS = 24;
 const JAMMED_SECTION_CONTENT =
   "This shell jammed briefly, but the procedural fog remains intact. Please regard this section as a courteous placeholder preserving the packet's ceremonial continuity without adding facts, admissions, threats, citations, or unnecessary confidence.";
@@ -142,6 +143,13 @@ function validateRequest(value: unknown): CannonRequest {
     typeof input.governingDocumentText === "string" &&
     input.governingDocumentText.trim().length > 0
       ? input.governingDocumentText
+          .trim()
+          .slice(0, MAX_GOVERNING_DOCUMENT_LENGTH)
+      : undefined;
+  const governingDocumentName =
+    typeof input.governingDocumentName === "string" &&
+    input.governingDocumentName.trim().length > 0
+      ? input.governingDocumentName.trim().slice(0, 200)
       : undefined;
 
   return {
@@ -150,6 +158,7 @@ function validateRequest(value: unknown): CannonRequest {
     stance: input.stance,
     slopDensity,
     governingDocumentText,
+    governingDocumentName,
   };
 }
 

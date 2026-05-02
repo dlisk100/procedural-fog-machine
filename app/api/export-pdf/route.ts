@@ -44,7 +44,7 @@ function addFooter(doc: PDFKit.PDFDocument) {
       .font("Helvetica")
       .fontSize(8)
       .fillColor("#666666")
-      .text(`Response Packet - Page ${index + 1}`, 54, 724, {
+      .text(`Response Packet - Page ${index + 1}`, 54, 748, {
         align: "center",
         lineBreak: false,
         width: 504,
@@ -60,7 +60,7 @@ async function renderPdf(args: {
   return new Promise((resolve, reject) => {
     const doc = new PDFDocument({
       size: "LETTER",
-      margins: { top: 54, bottom: 54, left: 54, right: 54 },
+      margins: { top: 54, bottom: 96, left: 54, right: 54 },
       bufferPages: true,
       autoFirstPage: false,
     });

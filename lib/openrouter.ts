@@ -9,6 +9,7 @@ export type OpenRouterOptions = {
   model?: string;
   temperature?: number;
   maxTokens?: number;
+  timeoutMs?: number;
 };
 
 type OpenRouterResponse = {
@@ -84,20 +85,40 @@ export async function callOpenRouter(
     throw new Error("OPENROUTER_API_KEY is not set.");
   }
 
-  const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      model: options.model,
-      messages,
-      temperature: options.temperature,
-      max_tokens: options.maxTokens,
-    }),
-    cache: "no-store",
-  });
+  const controller = new AbortController();
+  const timeoutMs = options.timeoutMs ?? 45_000;
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  let response: Response;
+
+  try {
+    response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model: options.model,
+        messages,
+        temperature: options.temperature,
+        max_tokens: options.maxTokens,
+      }),
+      cache: "no-store",
+      signal: controller.signal,
+    });
+  } catch (error) {
+    if (error instanceof Error && error.name === "AbortError") {
+      throw new Error(
+        `OpenRouter request timed out after ${Math.round(timeoutMs / 1000)}s for model ${
+          options.model || "openrouter/auto"
+        }.`,
+      );
+    }
+
+    throw error;
+  } finally {
+    clearTimeout(timeout);
+  }
 
   const responseText = await response.text();
   let payload: OpenRouterResponse = {};

@@ -87,6 +87,7 @@ export async function POST(request: Request) {
           model: OPENROUTER_SECTION_MODEL,
           temperature: 0.84,
           maxTokens: 2400,
+          timeoutMs: 80_000,
         },
       );
       console.info(

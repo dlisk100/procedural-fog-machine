@@ -166,6 +166,20 @@ function calculateClientMetrics(
   };
 }
 
+async function readJsonResponse<T>(response: Response, label: string): Promise<T> {
+  const text = await response.text();
+
+  if (!response.ok) {
+    throw new Error(`${label} failed (${response.status}): ${text.slice(0, 240)}`);
+  }
+
+  try {
+    return JSON.parse(text) as T;
+  } catch {
+    throw new Error(`${label} returned a non-JSON response: ${text.slice(0, 240)}`);
+  }
+}
+
 export default function Home() {
   const [threatText, setThreatText] = useState("");
   const [domain, setDomain] = useState<Domain>("housing");
@@ -302,7 +316,10 @@ export default function Home() {
         },
         body: JSON.stringify(requestPayload),
       });
-      const outlineResult = (await outlineResponse.json()) as OutlineApiResponse;
+      const outlineResult = await readJsonResponse<OutlineApiResponse>(
+        outlineResponse,
+        "Outline request",
+      );
 
       if (!outlineResult.ok) {
         throw new Error(outlineResult.error);
@@ -344,7 +361,10 @@ export default function Home() {
             totalSections: total,
           }),
         });
-        const sectionResult = (await sectionResponse.json()) as SectionApiResponse;
+        const sectionResult = await readJsonResponse<SectionApiResponse>(
+          sectionResponse,
+          `Shell ${shell} request`,
+        );
 
         if (!sectionResult.ok) {
           throw new Error(sectionResult.error);

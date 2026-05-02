@@ -1,7 +1,14 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import type { Domain, ParsedPdfResponse, Stance } from "@/lib/types";
+import type {
+  CannonOutline,
+  Domain,
+  GeneratedSection,
+  OutlineSection,
+  ParsedPdfResponse,
+  Stance,
+} from "@/lib/types";
 
 const SAMPLE_INPUT =
   "You are in violation of your lease due to an unauthorized pet. Remove the pet within 48 hours or face penalties.";
@@ -47,39 +54,30 @@ type PdfMeta = {
   truncated: boolean;
 };
 
-type CannonEvent =
+type OutlineApiResponse =
   | {
-      type: "log";
-      message: string;
+      ok: true;
+      outline: CannonOutline;
+      fallback: boolean;
+      warning?: string;
     }
   | {
-      type: "metric";
-      pages: number;
-      admissions: number;
-      fogIndex: number;
-      questions: number;
-      reviewBurden: string;
-    }
+      ok: false;
+      error: string;
+    };
+
+type SectionApiResponse =
   | {
-      type: "shell";
+      ok: true;
+      section: GeneratedSection;
       shell: number;
       total: number;
-      title: string;
-      message: string;
+      placeholder: boolean;
+      warning?: string;
     }
   | {
-      type: "section";
-      title: string;
-      content: string;
-    }
-  | {
-      type: "done";
-      html: string;
-      message: string;
-    }
-  | {
-      type: "error";
-      message: string;
+      ok: false;
+      error: string;
     };
 
 const INITIAL_METRICS: MetricState = {
@@ -149,6 +147,25 @@ function metricTone(fogIndex: number, isGenerating: boolean): string {
   return "Procedural munitions armed.";
 }
 
+function calculateClientMetrics(
+  generatedSections: GeneratedPreviewSection[],
+  progress: number,
+): MetricState {
+  const content = generatedSections.map((section) => section.content).join("\n\n");
+  const pages = Math.ceil(content.length / 2600);
+  const questions = content.match(/\?/g)?.length ?? 0;
+  const fogIndex = Math.min(99, Math.round(65 + progress * 34));
+  const reviewBurden = `${(pages * 0.12).toFixed(1)} hours`;
+
+  return {
+    pages,
+    admissions: 0,
+    fogIndex,
+    questions,
+    reviewBurden,
+  };
+}
+
 export default function Home() {
   const [threatText, setThreatText] = useState("");
   const [domain, setDomain] = useState<Domain>("housing");
@@ -191,76 +208,6 @@ export default function Home() {
     setCompletionMessage("");
     setCopyMessage("");
     setShellProgress(null);
-  }
-
-  function applyEvent(event: CannonEvent) {
-    if (event.type === "log") {
-      setLogs((current) => [...current, event.message]);
-      return;
-    }
-
-    if (event.type === "metric") {
-      setMetrics({
-        pages: event.pages,
-        admissions: event.admissions,
-        fogIndex: event.fogIndex,
-        questions: event.questions,
-        reviewBurden: event.reviewBurden,
-      });
-      return;
-    }
-
-    if (event.type === "shell") {
-      setShellProgress({ current: event.shell, total: event.total });
-      setLogs((current) => [
-        ...current,
-        `${event.message} (${event.shell}/${event.total})`,
-      ]);
-      return;
-    }
-
-    if (event.type === "section") {
-      setSections((current) => [
-        ...current,
-        {
-          title: event.title,
-          content: event.content,
-        },
-      ]);
-      return;
-    }
-
-    if (event.type === "done") {
-      setFinalHtml(event.html);
-      setCompletionMessage(event.message);
-      setLogs((current) => [...current, event.message]);
-      return;
-    }
-
-    if (event.type === "error") {
-      setError(event.message);
-      setLogs((current) => [...current, `Error: ${event.message}`]);
-    }
-  }
-
-  function applyStreamLine(line: string): boolean {
-    const trimmed = line.trim();
-
-    if (!trimmed) {
-      return false;
-    }
-
-    try {
-      const event = JSON.parse(trimmed) as CannonEvent;
-      applyEvent(event);
-      return event.type === "done";
-    } catch {
-      setLogs((current) => [
-        ...current,
-        "Skipped one malformed stream line; partial packet remains available.",
-      ]);
-      return false;
-    }
   }
 
   async function copyPlainText() {
@@ -333,72 +280,91 @@ export default function Home() {
 
     setIsGenerating(true);
     resetOutput();
-    setLogs(["Procedural munitions armed.", "Loading breech with courtesy clauses..."]);
-    let receivedDone = false;
+    setLogs([
+      "Procedural munitions armed.",
+      "Loading breech with courtesy clauses...",
+      "Requesting outline fire-control coordinates...",
+    ]);
 
     try {
-      const response = await fetch("/api/cannon", {
+      const requestPayload = {
+        threatText,
+        domain,
+        stance,
+        slopDensity,
+        governingDocumentText,
+        governingDocumentName,
+      };
+      const outlineResponse = await fetch("/api/cannon/outline", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({
-          threatText,
-          domain,
-          stance,
-          slopDensity,
-          governingDocumentText,
-          governingDocumentName,
-        }),
+        body: JSON.stringify(requestPayload),
       });
+      const outlineResult = (await outlineResponse.json()) as OutlineApiResponse;
 
-      if (!response.body) {
-        throw new Error("The cannon returned no stream.");
+      if (!outlineResult.ok) {
+        throw new Error(outlineResult.error);
       }
 
-      if (!("getReader" in response.body)) {
-        throw new Error("This browser could not open the cannon stream.");
+      if (outlineResult.warning) {
+        setLogs((current) => [...current, outlineResult.warning ?? "Fallback outline engaged."]);
       }
 
-      const reader = response.body.getReader();
-      const decoder = new TextDecoder();
-      let buffer = "";
-      let done = false;
+      const outline = outlineResult.outline;
+      const outlineSections = outline.sections.slice(0, 24);
+      setLogs((current) => [
+        ...current,
+        `Outline loaded: ${outlineSections.length} shells queued.`,
+      ]);
 
-      while (!done) {
-        const result = await reader.read();
-        done = result.done;
-        buffer += decoder.decode(result.value, { stream: !done });
-        const lines = buffer.split("\n");
-        buffer = lines.pop() ?? "";
+      const generatedSections: GeneratedPreviewSection[] = [];
 
-        for (const line of lines) {
-          const trimmed = line.trim();
+      for (let index = 0; index < outlineSections.length; index += 1) {
+        const section = outlineSections[index] as OutlineSection;
+        const shell = index + 1;
+        const total = outlineSections.length;
 
-          if (!trimmed) {
-            continue;
-          }
-
-          if (applyStreamLine(trimmed)) {
-            receivedDone = true;
-          }
-        }
-      }
-
-      const remaining = buffer.trim();
-
-      if (remaining) {
-        if (applyStreamLine(remaining)) {
-          receivedDone = true;
-        }
-      }
-
-      if (!receivedDone) {
+        setShellProgress({ current: shell, total });
         setLogs((current) => [
           ...current,
-          "Stream ended before final ceremony; preserving partial packet.",
+          `Firing Shell ${shell}: ${section.title} (${shell}/${total})`,
         ]);
+
+        const sectionResponse = await fetch("/api/cannon/section", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            request: requestPayload,
+            section,
+            sectionNumber: shell,
+            totalSections: total,
+          }),
+        });
+        const sectionResult = (await sectionResponse.json()) as SectionApiResponse;
+
+        if (!sectionResult.ok) {
+          throw new Error(sectionResult.error);
+        }
+
+        if (sectionResult.placeholder && sectionResult.warning) {
+          setLogs((current) => [
+            ...current,
+            `Shell ${shell} jammed briefly: ${sectionResult.warning}`,
+          ]);
+        }
+
+        generatedSections.push(sectionResult.section);
+        setSections([...generatedSections]);
+        setMetrics(calculateClientMetrics(generatedSections, shell / total));
       }
+
+      setFinalHtml("client-preview");
+      setCompletionMessage("Cannon discharged. Bureaucracy deployed.");
+      setLogs((current) => [...current, "Cannon discharged. Bureaucracy deployed."]);
     } catch (caughtError) {
       const message =
         caughtError instanceof Error

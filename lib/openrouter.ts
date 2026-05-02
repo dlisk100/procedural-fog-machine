@@ -8,12 +8,17 @@ export type OpenRouterMessage = {
 export type OpenRouterOptions = {
   model?: string;
   temperature?: number;
+  maxTokens?: number;
 };
 
 type OpenRouterResponse = {
   choices?: Array<{
+    finish_reason?: string;
+    native_finish_reason?: string;
     message?: {
-      content?: string | Array<{ type?: string; text?: string }>;
+      content?: string | Array<{ type?: string; text?: string }> | null;
+      reasoning?: string;
+      refusal?: string;
     };
   }>;
   error?: {
@@ -32,20 +37,41 @@ export const OPENROUTER_SECTION_MODEL =
   "openrouter/auto";
 
 function extractAssistantContent(payload: OpenRouterResponse): string {
-  const content = payload.choices?.[0]?.message?.content;
+  const message = payload.choices?.[0]?.message;
+  const content = message?.content;
 
   if (typeof content === "string") {
-    return content;
+    return content.trim();
   }
 
   if (Array.isArray(content)) {
     return content
-      .map((part) => (part.type === "text" ? part.text ?? "" : ""))
+      .map((part) => (part.type === "text" || !part.type ? part.text ?? "" : ""))
       .join("")
       .trim();
   }
 
+  if (typeof message?.reasoning === "string") {
+    return message.reasoning.trim();
+  }
+
   return "";
+}
+
+function summarizeOpenRouterResponse(payload: OpenRouterResponse, responseText: string): string {
+  const choice = payload.choices?.[0];
+  const message = choice?.message;
+  const content = message?.content;
+  const contentShape = Array.isArray(content)
+    ? `array(${content.length})`
+    : content === null
+      ? "null"
+      : typeof content;
+  const refusal = message?.refusal ? ` refusal=${message.refusal.slice(0, 120)}` : "";
+  const finishReason = choice?.finish_reason || choice?.native_finish_reason || "unknown";
+  const rawSnippet = responseText.slice(0, 500).replace(/\s+/g, " ");
+
+  return `finish_reason=${finishReason}; content=${contentShape};${refusal} response=${rawSnippet}`;
 }
 
 export async function callOpenRouter(
@@ -68,6 +94,7 @@ export async function callOpenRouter(
       model: options.model,
       messages,
       temperature: options.temperature,
+      max_tokens: options.maxTokens,
     }),
     cache: "no-store",
   });
@@ -92,7 +119,11 @@ export async function callOpenRouter(
   const content = extractAssistantContent(payload);
 
   if (!content) {
-    throw new Error("OpenRouter response did not include assistant content.");
+    throw new Error(
+      `OpenRouter response did not include assistant content for model ${
+        options.model || "openrouter/auto"
+      }. ${summarizeOpenRouterResponse(payload, responseText)}`,
+    );
   }
 
   return content;

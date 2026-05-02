@@ -15,6 +15,7 @@ import type {
 } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
+export const maxDuration = 300;
 
 const encoder = new TextEncoder();
 const MAX_INPUT_LENGTH = 20_000;
@@ -397,32 +398,34 @@ export async function POST(request: Request) {
           return;
         }
 
-        const outlineContent = await callOpenRouter(
-          [
-            {
-              role: "system",
-              content:
-                "You generate safe comedy bureaucracy. Return exactly what the user asks for, without legal advice, fake citations, threats, or attorney impersonation.",
-            },
-            {
-              role: "user",
-              content: buildOutlinePrompt(cannonRequest),
-            },
-          ],
-          {
-            model: OPENROUTER_OUTLINE_MODEL,
-            temperature: 0.72,
-          },
-        );
-
         let outline: CannonOutline;
 
         try {
+          const outlineContent = await callOpenRouter(
+            [
+              {
+                role: "system",
+                content:
+                  "You generate safe comedy bureaucracy. Return exactly what the user asks for, without legal advice, fake citations, threats, or attorney impersonation.",
+              },
+              {
+                role: "user",
+                content: buildOutlinePrompt(cannonRequest),
+              },
+            ],
+            {
+              model: OPENROUTER_OUTLINE_MODEL,
+              temperature: 0.72,
+              maxTokens: 4500,
+            },
+          );
+
           outline = parseOutlineJson(outlineContent, cannonRequest);
-        } catch {
+        } catch (error) {
+          const detail = error instanceof Error ? ` ${error.message}` : "";
           writeEvent(controller, {
             type: "log",
-            message: "Outline arrived wearing a novelty mustache. Switching to fallback paperwork.",
+            message: `Outline generator returned unusable paperwork.${detail} Switching to fallback outline.`,
           });
           outline = fallbackOutline(cannonRequest);
         }
@@ -465,11 +468,12 @@ export async function POST(request: Request) {
                   }),
                 },
               ],
-              {
-                model: OPENROUTER_SECTION_MODEL,
-                temperature: 0.84,
-              },
-            );
+            {
+              model: OPENROUTER_SECTION_MODEL,
+              temperature: 0.84,
+              maxTokens: 2400,
+            },
+          );
           } catch (error) {
             const detail =
               error instanceof Error ? ` ${error.message}` : " Unknown section error.";

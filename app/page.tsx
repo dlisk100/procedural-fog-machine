@@ -1380,25 +1380,16 @@ export default function Home() {
                 type="button"
                 onClick={fireFogMachine}
                 disabled={isGenerating}
-                className="grid min-h-20 w-full grid-cols-[auto_1fr_auto] items-center gap-4 overflow-hidden border border-amber-200 bg-amber-300 pr-4 text-left text-stone-950 shadow-[6px_6px_0_rgba(120,53,15,0.55)] transition hover:-translate-y-0.5 hover:bg-amber-200 active:translate-x-1 active:translate-y-1 active:shadow-none disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0 lg:col-span-2"
+                className="flex min-h-16 w-full items-center justify-between gap-4 border border-amber-200 bg-amber-300 px-5 py-4 text-left text-base font-black uppercase tracking-[0.12em] text-stone-950 shadow-[6px_6px_0_rgba(120,53,15,0.55)] transition hover:-translate-y-0.5 hover:bg-amber-200 active:translate-x-1 active:translate-y-1 active:shadow-none disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0 lg:col-span-2"
               >
-                <span className="flex h-full min-h-20 w-24 items-center justify-center border-r border-stone-950/25 bg-stone-950/10 px-3 sm:w-32">
-                  <Image
-                    src="/brand/cta-icon-options/cta-icon-01.png"
-                    alt=""
-                    width={112}
-                    height={112}
-                    className="h-14 w-14 shrink-0 object-contain sm:h-16 sm:w-16"
-                  />
-                </span>
-                <span className="text-center text-lg font-black uppercase tracking-[0.18em] sm:text-xl">
-                  {isGenerating ? "FIRING SHELLS..." : "FIRE THE SLOP CANNON"}
-                </span>
-                <span className="hidden border border-stone-950/35 bg-stone-950/10 px-3 py-2 text-center font-mono text-[10px] font-black uppercase leading-4 tracking-[0.12em] sm:block">
-                  Admissions
-                  <br />
-                  0
-                </span>
+                <span>{isGenerating ? "FIRING SHELLS..." : "FIRE THE SLOP CANNON"}</span>
+                <Image
+                  src="/brand/cta-icon-options/cta-icon-01.png"
+                  alt=""
+                  width={96}
+                  height={96}
+                  className="h-12 w-12 shrink-0 object-contain sm:h-14 sm:w-14"
+                />
               </button>
 
             </div>

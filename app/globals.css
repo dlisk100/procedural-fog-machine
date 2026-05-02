@@ -76,6 +76,11 @@ input {
   page-break-inside: avoid;
 }
 
+.sticky-status {
+  position: sticky;
+  top: 0;
+}
+
 @page {
   margin: 0.65in;
 }

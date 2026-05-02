@@ -1,7 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type {
   CannonOutline,
   Domain,
@@ -96,6 +96,12 @@ type ProgressState = {
   total: number;
 };
 
+type PacketMetadataState = {
+  status: string;
+  tone: string;
+  admissions: string;
+};
+
 type OutlineApiResponse =
   | {
       ok: true;
@@ -162,6 +168,40 @@ const INITIAL_METRICS: MetricState = {
   fogIndex: 0,
   questions: 0,
   reviewBurden: "0.0 hours",
+};
+
+const INITIAL_PACKET_METADATA: PacketMetadataState = {
+  status: "",
+  tone: "",
+  admissions: "",
+};
+
+const OUTLINE_METADATA: PacketMetadataState = {
+  status: "Outline Condensing",
+  tone: "Awaiting Formalization",
+  admissions: "0",
+};
+
+const SECTION_METADATA_MESSAGES = [
+  { status: "Headers Deployed", tone: "Procedural Warm-Up" },
+  { status: "Base Volley Active", tone: "Passive Voice Rising" },
+  { status: "Sections Accreting", tone: "Bureaucratic Pressure" },
+  { status: "Packet Thickening", tone: "Weaponized Politeness" },
+  { status: "Review Burden Growing", tone: "Municipal Seriousness" },
+  { status: "Formal Fog Forming", tone: "Deadpan Compliance" },
+];
+
+const APPENDIX_METADATA_MESSAGES = [
+  { status: "Appendix Volley Active", tone: "Supplemental Overbuild" },
+  { status: "Addenda Multiplying", tone: "Procedural Excess" },
+  { status: "Reservations Expanding", tone: "Non-Admission Vapor" },
+  { status: "Appendix Pressure High", tone: "Ceremonial Formality" },
+];
+
+const COMPLETE_PACKET_METADATA: PacketMetadataState = {
+  status: "Procedurally Overbuilt",
+  tone: "Weaponized Politeness",
+  admissions: "0",
 };
 
 function getDensityLabel(value: number): string {
@@ -243,6 +283,10 @@ function shouldRetrySectionError(message: string): boolean {
   );
 }
 
+function isAbortError(error: unknown): boolean {
+  return error instanceof Error && error.name === "AbortError";
+}
+
 function metricTone(fogIndex: number, isGenerating: boolean): string {
   if (isGenerating) {
     return "Fog density rising.";
@@ -302,6 +346,7 @@ async function fetchSectionResult(args: {
   section: OutlineSection;
   shell: number;
   total: number;
+  signal?: AbortSignal;
   onRetry?: (message: string) => void;
 }): Promise<SectionApiResponse> {
   let warning = "The section request failed unexpectedly.";
@@ -320,6 +365,7 @@ async function fetchSectionResult(args: {
           totalSections: args.total,
         }),
         cache: "no-store",
+        signal: args.signal,
       });
 
       return await readJsonResponse<SectionApiResponse>(
@@ -327,6 +373,13 @@ async function fetchSectionResult(args: {
         `Shell ${args.shell} request`,
       );
     } catch (error) {
+      if (args.signal?.aborted || isAbortError(error)) {
+        return {
+          ok: false,
+          error: "Generation canceled.",
+        };
+      }
+
       warning =
         error instanceof Error ? error.message : "The section request failed unexpectedly.";
 
@@ -363,6 +416,7 @@ async function fetchStreamingSectionResult(args: {
   section: OutlineSection;
   shell: number;
   total: number;
+  signal?: AbortSignal;
   onChunk: (content: string) => void;
   onRetry?: (message: string) => void;
 }): Promise<SectionApiResponse> {
@@ -379,6 +433,7 @@ async function fetchStreamingSectionResult(args: {
         totalSections: args.total,
       }),
       cache: "no-store",
+      signal: args.signal,
     });
 
     if (!response.ok || !response.body) {
@@ -448,6 +503,13 @@ async function fetchStreamingSectionResult(args: {
       warning,
     };
   } catch (error) {
+    if (args.signal?.aborted || isAbortError(error)) {
+      return {
+        ok: false,
+        error: "Generation canceled.",
+      };
+    }
+
     const message =
       error instanceof Error ? error.message : "Streaming section request failed.";
 
@@ -460,6 +522,7 @@ async function fetchStreamingSectionResult(args: {
       section: args.section,
       shell: args.shell,
       total: args.total,
+      signal: args.signal,
       onRetry: args.onRetry,
     });
   }
@@ -470,6 +533,7 @@ async function fetchInflateResult(args: {
   section: GeneratedPreviewSection;
   sectionNumber: number;
   addendumNumber: number;
+  signal?: AbortSignal;
   onRetry?: (message: string) => void;
 }): Promise<InflateApiResponse> {
   let warning = "The second-volley request failed unexpectedly.";
@@ -492,6 +556,7 @@ async function fetchInflateResult(args: {
           addendumNumber: args.addendumNumber,
         }),
         cache: "no-store",
+        signal: args.signal,
       });
 
       return await readJsonResponse<InflateApiResponse>(
@@ -499,6 +564,13 @@ async function fetchInflateResult(args: {
         `Inflation request ${args.sectionNumber}`,
       );
     } catch (error) {
+      if (args.signal?.aborted || isAbortError(error)) {
+        return {
+          ok: false,
+          error: "Generation canceled.",
+        };
+      }
+
       warning =
         error instanceof Error ? error.message : "The second-volley request failed unexpectedly.";
 
@@ -563,15 +635,33 @@ export default function Home() {
   const [pdfWarning, setPdfWarning] = useState("");
   const [pdfError, setPdfError] = useState("");
   const [pdfMeta, setPdfMeta] = useState<PdfMeta | null>(null);
+  const [pdfInputResetKey, setPdfInputResetKey] = useState(0);
   const [statusMessageIndex, setStatusMessageIndex] = useState(0);
   const [shellProgress, setShellProgress] = useState<ProgressState | null>(null);
+  const [packetMetadata, setPacketMetadata] = useState<PacketMetadataState>(
+    INITIAL_PACKET_METADATA,
+  );
+  const abortControllerRef = useRef<AbortController | null>(null);
+  const generationIdRef = useRef(0);
 
   const densityLabel = useMemo(() => formatDensityValue(slopDensity), [slopDensity]);
   const statusLine = isGenerating
     ? (GENERATION_STATUS_MESSAGES[statusMessageIndex] ?? "Writing slop.")
     : metricTone(metrics.fogIndex, isGenerating);
   const liveStatus = getLiveStatus({ isGenerating, completionMessage, error });
-  const canReset = !isGenerating && (sections.length > 0 || logs.length > 1 || Boolean(error));
+  const canReset =
+    isGenerating ||
+    threatText.length > 0 ||
+    governingDocumentText.length > 0 ||
+    Boolean(governingDocumentName) ||
+    Boolean(selectedPdfFile) ||
+    domain !== "housing" ||
+    stance !== "maximum_bureaucracy" ||
+    slopDensity !== 10 ||
+    sections.length > 0 ||
+    logs.length > 1 ||
+    Boolean(error) ||
+    Boolean(completionMessage);
 
   useEffect(() => {
     if (!isGenerating) {
@@ -595,6 +685,27 @@ export default function Home() {
     setCopyMessage("");
     setPdfExportMessage("");
     setShellProgress(null);
+    setPacketMetadata(INITIAL_PACKET_METADATA);
+  }
+
+  function resetAll() {
+    generationIdRef.current += 1;
+    abortControllerRef.current?.abort();
+    abortControllerRef.current = null;
+    setIsGenerating(false);
+    setThreatText("");
+    setDomain("housing");
+    setStance("maximum_bureaucracy");
+    setSlopDensity(10);
+    setSelectedPdfFile(null);
+    setGoverningDocumentText("");
+    setGoverningDocumentName("");
+    setPdfStatus("idle");
+    setPdfWarning("");
+    setPdfError("");
+    setPdfMeta(null);
+    setPdfInputResetKey((current) => current + 1);
+    resetOutput();
   }
 
   async function copyPlainText() {
@@ -623,7 +734,7 @@ export default function Home() {
 
     try {
       const payload = {
-        title: "Procedural Response Packet",
+        title: "Response Packet",
         sections,
         metrics: {
           pages: metrics.pages,
@@ -725,12 +836,22 @@ export default function Home() {
 
     setIsGenerating(true);
     setStatusMessageIndex(0);
+    abortControllerRef.current?.abort();
+    const abortController = new AbortController();
+    abortControllerRef.current = abortController;
+    const generationId = generationIdRef.current + 1;
+    generationIdRef.current = generationId;
     resetOutput();
     setLogs([
       "Procedural munitions armed.",
       "Loading breech with courtesy clauses...",
       "Requesting outline fire-control coordinates...",
     ]);
+    setPacketMetadata({
+      status: "Awaiting Outline",
+      tone: "Calibrating",
+      admissions: "0",
+    });
 
     try {
       const requestPayload = {
@@ -747,6 +868,7 @@ export default function Home() {
           "Content-Type": "application/json",
         },
         body: JSON.stringify(requestPayload),
+        signal: abortController.signal,
       });
       const outlineResult = await readJsonResponse<OutlineApiResponse>(
         outlineResponse,
@@ -763,6 +885,7 @@ export default function Home() {
 
       const outline = outlineResult.outline;
       const outlineSections = outline.sections.slice(0, 24);
+      setPacketMetadata(OUTLINE_METADATA);
       setLogs((current) => [
         ...current,
         `Outline loaded: ${outlineSections.length} shells queued.`,
@@ -790,6 +913,9 @@ export default function Home() {
         const shell = index + 1;
         const volley = Math.floor(index / BASE_SECTION_CONCURRENCY) + 1;
         launchedSections += 1;
+        const sectionMetadata =
+          SECTION_METADATA_MESSAGES[index % SECTION_METADATA_MESSAGES.length] ??
+          SECTION_METADATA_MESSAGES[0];
 
         if (index > 0 && index % BASE_SECTION_CONCURRENCY === 0) {
           setLogs((current) => [
@@ -802,9 +928,13 @@ export default function Home() {
         }
 
         setShellProgress({
-          label: "Base",
+          label: "Sections",
           current: launchedSections,
           total: totalBaseSections,
+        });
+        setPacketMetadata({
+          ...sectionMetadata,
+          admissions: "0",
         });
         setLogs((current) => [
           ...current,
@@ -816,7 +946,12 @@ export default function Home() {
           section,
           shell,
           total: totalBaseSections,
+          signal: abortController.signal,
           onChunk: (content) => {
+            if (abortController.signal.aborted || generationIdRef.current !== generationId) {
+              return;
+            }
+
             generatedSections[index] = {
               title: section.title,
               content,
@@ -848,7 +983,7 @@ export default function Home() {
         generatedSections[index] = sectionResult.section;
         completedSections += 1;
         setShellProgress({
-          label: "Base",
+          label: "Sections",
           current: completedSections,
           total: totalBaseSections,
         });
@@ -904,9 +1039,14 @@ export default function Home() {
           }
 
           setShellProgress({
-            label: "Appendix",
+            label: "Addendums",
             current: launchedAddenda,
             total: totalAddenda,
+          });
+          setPacketMetadata({
+            ...(APPENDIX_METADATA_MESSAGES[index % APPENDIX_METADATA_MESSAGES.length] ??
+              APPENDIX_METADATA_MESSAGES[0]),
+            admissions: "0",
           });
           setLogs((current) => [
             ...current,
@@ -919,6 +1059,7 @@ export default function Home() {
             section,
             sectionNumber: addendumNumber,
             addendumNumber,
+            signal: abortController.signal,
             onRetry: (message) => {
               setLogs((current) => [...current, message]);
             },
@@ -938,7 +1079,7 @@ export default function Home() {
           inflatedSections[addendumSlot] = inflateResult.addendum;
           completedAddenda += 1;
           setShellProgress({
-            label: "Appendix",
+            label: "Addendums",
             current: completedAddenda,
             total: totalAddenda,
           });
@@ -956,9 +1097,14 @@ export default function Home() {
       }
 
       setFinalHtml("client-preview");
+      setPacketMetadata(COMPLETE_PACKET_METADATA);
       setCompletionMessage("Cannon discharged. Bureaucracy deployed.");
       setLogs((current) => [...current, "Cannon discharged. Bureaucracy deployed."]);
     } catch (caughtError) {
+      if (abortController.signal.aborted || generationIdRef.current !== generationId) {
+        return;
+      }
+
       const message =
         caughtError instanceof Error
           ? caughtError.message
@@ -967,7 +1113,10 @@ export default function Home() {
       setError(message);
       setLogs((current) => [...current, `Error: ${message}`]);
     } finally {
-      setIsGenerating(false);
+      if (generationIdRef.current === generationId) {
+        abortControllerRef.current = null;
+        setIsGenerating(false);
+      }
     }
   }
 
@@ -999,7 +1148,7 @@ export default function Home() {
         </header>
 
         {isGenerating || sections.length > 0 || finalHtml || error || completionMessage ? (
-          <section className="no-print sticky top-0 z-20 border border-stone-700/80 bg-[#15130f]/95 shadow-[0_12px_32px_rgba(0,0,0,0.28)] backdrop-blur">
+          <section className="sticky-status no-print sticky top-0 z-50 w-full self-start border border-stone-700/80 bg-[#15130f] shadow-[0_14px_36px_rgba(0,0,0,0.36)] backdrop-blur">
             <div className="grid gap-3 px-3 py-3 lg:grid-cols-[minmax(220px,1.05fr)_minmax(0,2fr)] lg:items-center">
               <div>
                 <p className="font-mono text-[10px] font-bold uppercase tracking-[0.18em] text-stone-500">
@@ -1051,7 +1200,7 @@ export default function Home() {
                 </button>
                 <button
                   type="button"
-                  onClick={resetOutput}
+                  onClick={resetAll}
                   disabled={!canReset}
                   className="border border-stone-600 px-3 py-2 text-xs font-bold uppercase tracking-[0.14em] text-stone-200 transition hover:border-stone-300 active:translate-y-[1px] disabled:cursor-not-allowed disabled:opacity-45"
                 >
@@ -1060,8 +1209,8 @@ export default function Home() {
               </div>
             </div>
 
-            <div className="grid gap-4 p-4 lg:grid-cols-[minmax(0,1.35fr)_minmax(360px,0.9fr)] sm:p-5">
-              <label className="grid content-start gap-2">
+            <div className="grid items-start gap-4 p-4 sm:p-5 lg:grid-cols-12">
+              <label className="grid content-start gap-2 lg:col-span-7">
                 <span className="text-sm font-semibold text-stone-200">
                   Paste the scary message
                 </span>
@@ -1069,20 +1218,19 @@ export default function Home() {
                   value={threatText}
                   onChange={(event) => setThreatText(event.target.value)}
                   disabled={isGenerating}
-                  rows={11}
-                  className="min-h-80 resize-y border border-stone-600 bg-stone-950/80 px-3 py-3 text-sm leading-6 text-stone-100 outline-none transition placeholder:text-stone-600 focus:border-amber-300 disabled:cursor-not-allowed disabled:opacity-70"
+                  rows={9}
+                  className="min-h-[300px] resize-y border border-stone-600 bg-stone-950/80 px-3 py-3 text-sm leading-6 text-stone-100 outline-none transition placeholder:text-stone-600 focus:border-amber-300 disabled:cursor-not-allowed disabled:opacity-70"
                   placeholder="Paste the threatening portal message, stern landlord note, compliance memo, or suspiciously confident administrative thunderclap."
                 />
               </label>
 
-              <section className="grid gap-3 border border-stone-700 bg-stone-950/45 p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]">
+              <section className="grid gap-3 border border-stone-700 bg-stone-950/45 p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.05)] lg:col-span-5">
                 <div>
                   <h3 className="text-base font-black tracking-tight text-stone-100">
                     Optional Fog Fuel
                   </h3>
                   <p className="mt-1 text-sm leading-6 text-stone-400">
-                    Upload a lease, policy, contract, or notice. Selectable-text PDFs work
-                    best. No OCR. Max 4 MB on the hosted demo.
+                    Upload a lease, policy, contract, or notice. Max 4 MB.
                   </p>
                 </div>
 
@@ -1091,6 +1239,7 @@ export default function Home() {
                     Upload lease / policy / contract PDF
                   </span>
                   <input
+                    key={pdfInputResetKey}
                     type="file"
                     accept=".pdf,application/pdf"
                     disabled={isGenerating || pdfStatus === "extracting"}
@@ -1162,14 +1311,14 @@ export default function Home() {
                       }
                     }}
                     disabled={isGenerating}
-                    rows={5}
-                    className="min-h-32 resize-y border border-stone-600 bg-stone-950/80 px-3 py-3 text-xs leading-5 text-stone-100 outline-none transition placeholder:text-stone-600 focus:border-amber-300 disabled:cursor-not-allowed disabled:opacity-70"
-                    placeholder="Paste optional lease, policy, contract, notice, or clause text here. The cannon will treat it as user-provided context, not legal authority."
+                    rows={4}
+                    className="min-h-28 resize-y border border-stone-600 bg-stone-950/80 px-3 py-3 text-xs leading-5 text-stone-100 outline-none transition placeholder:text-stone-600 focus:border-amber-300 disabled:cursor-not-allowed disabled:opacity-70"
+                    placeholder="Paste optional lease, policy, contract, notice, or clause text here."
                   />
                 </label>
               </section>
 
-              <div className="grid gap-4 sm:grid-cols-2">
+              <div className="grid gap-4 sm:grid-cols-2 lg:col-span-8">
                 <label className="grid gap-2">
                   <span className="text-sm font-semibold text-stone-200">Domain</span>
                   <select
@@ -1203,7 +1352,7 @@ export default function Home() {
                 </label>
               </div>
 
-              <label className="grid gap-3">
+              <label className="grid content-start gap-3 lg:col-span-4">
                 <span className="flex items-center justify-between gap-3 text-sm font-semibold text-stone-200">
                   <span>Slop Density</span>
                   <span className="font-mono text-amber-200">
@@ -1231,16 +1380,25 @@ export default function Home() {
                 type="button"
                 onClick={fireFogMachine}
                 disabled={isGenerating}
-                className="flex min-h-16 w-full items-center justify-between gap-4 border border-amber-200 bg-amber-300 px-5 py-4 text-left text-base font-black uppercase tracking-[0.12em] text-stone-950 shadow-[6px_6px_0_rgba(120,53,15,0.55)] transition hover:-translate-y-0.5 hover:bg-amber-200 active:translate-x-1 active:translate-y-1 active:shadow-none disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0 lg:col-span-2"
+                className="grid min-h-20 w-full grid-cols-[auto_1fr_auto] items-center gap-4 overflow-hidden border border-amber-200 bg-amber-300 pr-4 text-left text-stone-950 shadow-[6px_6px_0_rgba(120,53,15,0.55)] transition hover:-translate-y-0.5 hover:bg-amber-200 active:translate-x-1 active:translate-y-1 active:shadow-none disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0 lg:col-span-2"
               >
-                <span>{isGenerating ? "FIRING SHELLS..." : "FIRE THE SLOP CANNON"}</span>
-                <Image
-                  src="/brand/cta-icon-options/cta-icon-01.png"
-                  alt=""
-                  width={96}
-                  height={96}
-                  className="h-12 w-12 shrink-0 object-contain sm:h-14 sm:w-14"
-                />
+                <span className="flex h-full min-h-20 w-24 items-center justify-center border-r border-stone-950/25 bg-stone-950/10 px-3 sm:w-32">
+                  <Image
+                    src="/brand/cta-icon-options/cta-icon-01.png"
+                    alt=""
+                    width={112}
+                    height={112}
+                    className="h-14 w-14 shrink-0 object-contain sm:h-16 sm:w-16"
+                  />
+                </span>
+                <span className="text-center text-lg font-black uppercase tracking-[0.18em] sm:text-xl">
+                  {isGenerating ? "FIRING SHELLS..." : "FIRE THE SLOP CANNON"}
+                </span>
+                <span className="hidden border border-stone-950/35 bg-stone-950/10 px-3 py-2 text-center font-mono text-[10px] font-black uppercase leading-4 tracking-[0.12em] sm:block">
+                  Admissions
+                  <br />
+                  0
+                </span>
               </button>
 
             </div>
@@ -1299,7 +1457,7 @@ export default function Home() {
                       disabled={sections.length === 0}
                       className="border border-stone-700 bg-[#fffaf0] px-3 py-2 text-xs font-black uppercase tracking-[0.12em] text-stone-950 transition hover:bg-amber-200 active:translate-y-[1px] disabled:cursor-not-allowed disabled:opacity-50"
                     >
-                      Download Ceremonial PDF
+                      Download PDF
                     </button>
                   </div>
                 </div>
@@ -1320,14 +1478,15 @@ export default function Home() {
                   <div className="document-metadata mt-4 grid gap-2 border-y border-stone-300 py-4 font-mono text-xs uppercase tracking-[0.1em] text-stone-700 sm:grid-cols-3">
                     <p>
                       <span className="block text-stone-500">Packet Status</span>
-                      Procedurally Overbuilt
+                      {packetMetadata.status || "\u00a0"}
                     </p>
                     <p>
                       <span className="block text-stone-500">Tone</span>
-                      Weaponized Politeness
+                      {packetMetadata.tone || "\u00a0"}
                     </p>
                     <p>
-                      <span className="block text-stone-500">Admissions</span>0
+                      <span className="block text-stone-500">Admissions</span>
+                      {packetMetadata.admissions || "\u00a0"}
                     </p>
                   </div>
 

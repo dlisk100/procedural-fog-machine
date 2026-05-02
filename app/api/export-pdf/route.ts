@@ -44,8 +44,9 @@ function addFooter(doc: PDFKit.PDFDocument) {
       .font("Helvetica")
       .fontSize(8)
       .fillColor("#666666")
-      .text(`Procedural Fog Packet - Page ${index + 1}`, 54, 742, {
+      .text(`Response Packet - Page ${index + 1}`, 54, 724, {
         align: "center",
+        lineBreak: false,
         width: 504,
       });
   }
@@ -72,11 +73,11 @@ async function renderPdf(args: {
     doc.addPage();
     doc
       .font("Helvetica-Bold")
-      .fontSize(24)
+      .fontSize(26)
       .fillColor("#111111")
       .text("The Procedural Fog Machine", { align: "center" });
     doc.moveDown(1.5);
-    doc.fontSize(18).text(args.title, { align: "center" });
+    doc.fontSize(20).text(args.title, { align: "center" });
     doc.moveDown(2);
     doc.font("Helvetica").fontSize(12).text("Admissions Made: 0", { align: "center" });
     doc
@@ -84,12 +85,6 @@ async function renderPdf(args: {
       .text(`Estimated Review Burden: ${args.metrics.reviewBurden ?? "0.0 hours"}`, {
         align: "center",
       });
-    doc.moveDown(2);
-    doc
-      .font("Helvetica-Oblique")
-      .fontSize(10)
-      .fillColor("#555555")
-      .text("Comedy-powered drafting support. Not legal advice.", { align: "center" });
 
     doc.addPage();
     doc.font("Helvetica-Bold").fontSize(18).fillColor("#111111").text("Table of Contents");
@@ -132,7 +127,7 @@ async function renderPdf(args: {
 export async function POST(request: Request) {
   try {
     const body = (await request.json()) as ExportRequest;
-    const title = cleanText(body.title, "Procedural Response Packet").slice(0, 200);
+    const title = cleanText(body.title, "Response Packet").slice(0, 200);
     const sections = Array.isArray(body.sections)
       ? body.sections
           .slice(0, MAX_SECTIONS)

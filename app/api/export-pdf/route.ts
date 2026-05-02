@@ -24,6 +24,22 @@ type ExportRequest = {
 const MAX_SECTIONS = 80;
 const MAX_SECTION_CHARS = 35_000;
 
+type PdfDocumentWithFragment = PDFKit.PDFDocument & {
+  _fragment: (
+    text: string,
+    x: number,
+    y: number,
+    options: {
+      align: "center";
+      fill: boolean;
+      lineWidth: number;
+      textWidth: number;
+      wordCount: number;
+      width: number;
+    },
+  ) => void;
+};
+
 function cleanText(value: unknown, fallback = ""): string {
   return typeof value === "string" ? value.trim() : fallback;
 }
@@ -39,16 +55,24 @@ function addFooter(doc: PDFKit.PDFDocument) {
   const range = doc.bufferedPageRange();
 
   for (let index = range.start; index < range.start + range.count; index += 1) {
+    const footer = `Response Packet - Page ${index + 1}`;
     doc.switchToPage(index);
     doc
       .font("Helvetica")
       .fontSize(8)
-      .fillColor("#666666")
-      .text(`Response Packet - Page ${index + 1}`, 54, 748, {
+      .fillColor("#666666");
+
+    // Use PDFKit's fixed-position fragment renderer instead of doc.text().
+    // doc.text() participates in page flow and can create blank pages when
+    // drawing below the body text area after switchToPage().
+    (doc as PdfDocumentWithFragment)._fragment(footer, 54, 748, {
         align: "center",
-        lineBreak: false,
+        fill: true,
+        lineWidth: 504,
+        textWidth: doc.widthOfString(footer),
+        wordCount: footer.trim().split(/\s+/).length,
         width: 504,
-      });
+    });
   }
 }
 

@@ -665,75 +665,107 @@ export default function Home() {
 
   return (
     <main className="app-shell min-h-[100dvh] bg-[#15130f] text-stone-100">
-      <div className="mx-auto flex w-full max-w-7xl flex-col gap-6 px-4 py-5 sm:px-6 lg:px-8">
-        <header className="no-print grid gap-5 border-b border-stone-700/70 pb-5 md:grid-cols-[1.4fr_0.6fr] md:items-end">
+      <div className="mx-auto flex w-full max-w-[1600px] flex-col gap-6 px-4 py-5 sm:px-6 lg:px-8">
+        <header className="no-print border-b border-stone-700/70 pb-5">
           <div>
-            <p className="mb-3 font-mono text-xs uppercase tracking-[0.2em] text-amber-300">
-              Comedy-powered drafting support. Not legal advice.
+            <p className="mb-3 font-mono text-xs font-black uppercase tracking-[0.28em] text-amber-300">
+              FLOOD THE ZONE
             </p>
-            <h1 className="text-4xl font-black tracking-tight text-stone-50 md:text-6xl">
+            <h1 className="max-w-5xl text-4xl font-black leading-none tracking-tight text-stone-50 md:text-6xl">
               The Procedural Fog Machine
             </h1>
-            <p className="mt-3 max-w-2xl text-base leading-7 text-stone-300">
-              Turn scary messages into polite, non-admitting bureaucratic mist.
-            </p>
-          </div>
-          <div className="border border-amber-200/20 bg-stone-950/60 p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]">
-            <p className="font-mono text-xs uppercase tracking-[0.18em] text-stone-400">
-              Cannon Status
-            </p>
-            <p className="mt-2 text-xl font-bold text-amber-200">{statusLine}</p>
           </div>
         </header>
 
-        <section
-          className={`no-print border px-4 py-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.08)] sm:px-5 ${
-            error
-              ? "border-red-300/50 bg-red-950/35"
-              : completionMessage
-                ? "border-emerald-300/40 bg-emerald-950/30"
-                : isGenerating
-                  ? "border-amber-300/50 bg-amber-950/25"
-                  : "border-stone-700 bg-stone-950/55"
-          }`}
-        >
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <p className="font-mono text-xs uppercase tracking-[0.18em] text-stone-400">
-                Live Status
-              </p>
-              <p className="mt-1 text-2xl font-black tracking-tight text-stone-50">
-                {liveStatus}
-              </p>
-            </div>
-            <div className="border border-stone-600/70 bg-stone-950/70 px-4 py-3 font-mono text-sm text-amber-200">
-              {shellProgress
-                ? `Shell ${shellProgress.current} of ${shellProgress.total}`
-                : "Shells awaiting authorization"}
-            </div>
-          </div>
-        </section>
-
-        <div className="grid gap-5 lg:grid-cols-[0.9fr_1.25fr]">
-          <section className="no-print border border-stone-700 bg-[#211d17] p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)] sm:p-5">
-            <div className="mb-5 flex items-start justify-between gap-3">
+        {isGenerating || sections.length > 0 || finalHtml || error || completionMessage ? (
+          <section className="no-print sticky top-0 z-20 border border-stone-700/80 bg-[#15130f]/95 shadow-[0_12px_32px_rgba(0,0,0,0.28)] backdrop-blur">
+            <div className="grid gap-3 px-3 py-3 lg:grid-cols-[minmax(220px,1.3fr)_minmax(0,2fr)_auto] lg:items-center">
               <div>
-                <h2 className="text-xl font-bold tracking-tight">Input Bay</h2>
-                <p className="mt-1 text-sm text-stone-400">
-                  Feed the machine. It will respond with excessive procedural calm.
+                <p className="font-mono text-[10px] font-bold uppercase tracking-[0.18em] text-stone-500">
+                  Cannon Status
+                </p>
+                <p className="mt-1 text-base font-black text-stone-50">{liveStatus}</p>
+                <p className="mt-1 font-mono text-xs uppercase tracking-[0.14em] text-amber-300">
+                  {statusLine}
                 </p>
               </div>
-              <button
-                type="button"
-                onClick={() => setThreatText(SAMPLE_INPUT)}
-                disabled={isGenerating}
-                className="border border-stone-600 px-3 py-2 text-xs font-bold uppercase tracking-[0.14em] text-stone-200 transition hover:border-amber-300 hover:text-amber-200 active:translate-y-[1px] disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                Sample
-              </button>
+              <div className="grid grid-cols-2 gap-2 sm:grid-cols-5">
+                <CompactMetric
+                  label="Shell"
+                  value={
+                    shellProgress
+                      ? `${shellProgress.current}/${shellProgress.total}`
+                      : "Ready"
+                  }
+                />
+                <CompactMetric label="Pages" value={String(metrics.pages)} />
+                <CompactMetric label="Admissions" value="0" />
+                <CompactMetric label="Fog" value={`${metrics.fogIndex}/100`} />
+                <CompactMetric label="Review" value={metrics.reviewBurden} />
+              </div>
+              <div className="grid gap-2 sm:grid-cols-3 lg:min-w-[390px]">
+                <button
+                  type="button"
+                  onClick={copyPlainText}
+                  disabled={sections.length === 0}
+                  className="border border-stone-600 px-3 py-2 text-xs font-black uppercase tracking-[0.12em] text-stone-200 transition hover:border-amber-300 hover:text-amber-200 active:translate-y-[1px] disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  Copy Text
+                </button>
+                <button
+                  type="button"
+                  onClick={downloadCeremonialPdf}
+                  disabled={sections.length === 0}
+                  className="border border-amber-300 px-3 py-2 text-xs font-black uppercase tracking-[0.12em] text-amber-200 transition hover:bg-amber-300 hover:text-stone-950 active:translate-y-[1px] disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  Download PDF
+                </button>
+                <button
+                  type="button"
+                  onClick={() => window.print()}
+                  disabled={sections.length === 0}
+                  className="border border-stone-600 px-3 py-2 text-xs font-black uppercase tracking-[0.12em] text-stone-200 transition hover:border-stone-300 active:translate-y-[1px] disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  Print Fallback
+                </button>
+              </div>
+            </div>
+          </section>
+        ) : null}
+
+        <div className="grid gap-5">
+          <section className="no-print border border-stone-700 bg-[#211d17] shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]">
+            <div className="flex items-start justify-between gap-3 border-b border-stone-700 px-4 py-4 sm:px-5">
+              <div>
+                <p className="font-mono text-[11px] font-bold uppercase tracking-[0.18em] text-amber-300">
+                  Command Dock
+                </p>
+                <h2 className="mt-1 text-2xl font-black tracking-tight">Preflight the cannon</h2>
+                <p className="mt-1 text-sm text-stone-400">
+                  Load source material, calibrate the stance, and authorize procedural fog.
+                </p>
+              </div>
+              <div className="flex flex-wrap justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setThreatText(SAMPLE_INPUT)}
+                  disabled={isGenerating}
+                  className="border border-stone-600 px-3 py-2 text-xs font-bold uppercase tracking-[0.14em] text-stone-200 transition hover:border-amber-300 hover:text-amber-200 active:translate-y-[1px] disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  Sample
+                </button>
+                <button
+                  type="button"
+                  onClick={resetOutput}
+                  disabled={!canReset}
+                  className="border border-stone-600 px-3 py-2 text-xs font-bold uppercase tracking-[0.14em] text-stone-200 transition hover:border-stone-300 active:translate-y-[1px] disabled:cursor-not-allowed disabled:opacity-45"
+                >
+                  Reset
+                </button>
+              </div>
             </div>
 
-            <div className="grid gap-4">
+            <div className="grid gap-4 p-4 lg:grid-cols-[minmax(0,1.35fr)_minmax(360px,0.9fr)] sm:p-5">
               <label className="grid gap-2">
                 <span className="text-sm font-semibold text-stone-200">
                   Paste the scary message
@@ -742,8 +774,8 @@ export default function Home() {
                   value={threatText}
                   onChange={(event) => setThreatText(event.target.value)}
                   disabled={isGenerating}
-                  rows={10}
-                  className="min-h-52 resize-y border border-stone-600 bg-stone-950/80 px-3 py-3 text-sm leading-6 text-stone-100 outline-none transition placeholder:text-stone-600 focus:border-amber-300 disabled:cursor-not-allowed disabled:opacity-70"
+                  rows={11}
+                  className="min-h-80 resize-y border border-stone-600 bg-stone-950/80 px-3 py-3 text-sm leading-6 text-stone-100 outline-none transition placeholder:text-stone-600 focus:border-amber-300 disabled:cursor-not-allowed disabled:opacity-70"
                   placeholder="Paste the threatening portal message, stern landlord note, compliance memo, or suspiciously confident administrative thunderclap."
                 />
               </label>
@@ -754,9 +786,8 @@ export default function Home() {
                     Optional Fog Fuel
                   </h3>
                   <p className="mt-1 text-sm leading-6 text-stone-400">
-                    Optional: upload a lease, policy, contract, or notice. Selectable-text
-                    PDFs work best. No OCR. Max 4 MB on the hosted demo. For larger
-                    documents, paste the relevant excerpts manually.
+                    Upload a lease, policy, contract, or notice. Selectable-text PDFs work
+                    best. No OCR. Max 4 MB on the hosted demo.
                   </p>
                 </div>
 
@@ -895,8 +926,8 @@ export default function Home() {
                 />
               </label>
 
-              <p className="border-l-2 border-amber-300/70 bg-stone-950/50 px-3 py-2 text-sm leading-6 text-stone-300">
-                For comedy and drafting support only. Not legal advice. Do not use to
+              <p className="border-l-2 border-amber-300/70 bg-stone-950/50 px-3 py-2 text-sm leading-6 text-stone-300 lg:col-span-2">
+                Comedy-powered drafting support. Not legal advice. Do not use to
                 threaten, harass, fabricate facts, or ignore real deadlines.
               </p>
 
@@ -915,30 +946,11 @@ export default function Home() {
                 {isGenerating ? "FIRING SHELLS..." : "FIRE THE FOG MACHINE"}
               </button>
 
-              <div className="grid gap-3 sm:grid-cols-2">
-                <button
-                  type="button"
-                  onClick={resetOutput}
-                  disabled={!canReset}
-                  className="border border-stone-600 px-4 py-3 text-sm font-bold uppercase tracking-[0.12em] text-stone-200 transition hover:border-stone-300 active:translate-y-[1px] disabled:cursor-not-allowed disabled:opacity-45"
-                >
-                  Reset
-                </button>
-                {finalHtml ? (
-                  <button
-                    type="button"
-                    onClick={() => window.print()}
-                    className="border border-amber-300 px-4 py-3 text-sm font-bold uppercase tracking-[0.12em] text-amber-200 transition hover:bg-amber-300 hover:text-stone-950 active:translate-y-[1px]"
-                  >
-                    Export Ceremonial PDF
-                  </button>
-                ) : null}
-              </div>
             </div>
           </section>
 
           <section className="grid gap-5">
-            <div className="no-print metrics-grid grid grid-cols-2 gap-3 xl:grid-cols-6">
+            <div className="no-print metrics-grid hidden grid-cols-2 gap-3 xl:grid-cols-6">
               <MetricCard label="Estimated Pages" value={String(metrics.pages)} />
               <MetricCard
                 label="Admissions Made"
@@ -962,7 +974,7 @@ export default function Home() {
               />
             </div>
 
-            <div className="grid gap-5 xl:grid-cols-[0.75fr_1.25fr]">
+            <div className="grid gap-5">
               <section className="no-print min-h-72 border border-stone-700 bg-stone-950 p-4">
                 <div className="mb-3 flex items-center justify-between gap-3">
                   <h2 className="text-lg font-bold">Live Shell Log</h2>
@@ -970,7 +982,11 @@ export default function Home() {
                     {isGenerating ? "Active" : "Armed"}
                   </span>
                 </div>
-                <div className="max-h-[460px] space-y-2 overflow-y-auto pr-1 font-mono text-xs leading-5 text-stone-300">
+                <div
+                  className={`space-y-2 overflow-y-auto pr-1 font-mono text-xs leading-5 text-stone-300 ${
+                    isGenerating ? "max-h-[360px]" : "max-h-40"
+                  }`}
+                >
                   {logs.map((log, index) => (
                     <div
                       key={`${log}-${index}`}
@@ -985,27 +1001,45 @@ export default function Home() {
                 </div>
               </section>
 
-              <section className="document-preview-shell min-h-[620px] border border-stone-700 bg-[#e9dfc9] p-3 text-stone-950 sm:p-5">
-                <div className="no-print mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                  <p className="text-sm font-bold text-stone-800">
-                    Partial sections stay visible even if the stream ends early.
-                  </p>
-                  <button
-                    type="button"
-                    onClick={copyPlainText}
-                    disabled={sections.length === 0}
-                    className="border border-stone-700 bg-[#fffaf0] px-3 py-2 text-xs font-black uppercase tracking-[0.12em] text-stone-950 transition hover:bg-amber-200 active:translate-y-[1px] disabled:cursor-not-allowed disabled:opacity-50"
-                  >
-                    Copy Plain Text
-                  </button>
-                  <button
-                    type="button"
-                    onClick={downloadCeremonialPdf}
-                    disabled={sections.length === 0}
-                    className="border border-stone-700 bg-[#fffaf0] px-3 py-2 text-xs font-black uppercase tracking-[0.12em] text-stone-950 transition hover:bg-amber-200 active:translate-y-[1px] disabled:cursor-not-allowed disabled:opacity-50"
-                  >
-                    Download Ceremonial PDF
-                  </button>
+              <section className="document-preview-shell min-h-[760px] border border-stone-700 bg-[#e9dfc9] p-3 text-stone-950 sm:p-5 lg:p-7">
+                <div className="no-print mb-4 grid gap-3 border-b border-stone-400/70 pb-4 lg:grid-cols-[1fr_auto] lg:items-center">
+                  <div>
+                    <p className="font-mono text-[11px] font-bold uppercase tracking-[0.18em] text-stone-600">
+                      Packet Theater
+                    </p>
+                    <h2 className="mt-1 text-2xl font-black tracking-tight text-stone-950">
+                      Generated packet
+                    </h2>
+                    <p className="mt-1 text-sm font-bold text-stone-700">
+                      Partial sections stay visible even if generation ends early.
+                    </p>
+                  </div>
+                  <div className="grid gap-2 sm:grid-cols-3">
+                    <button
+                      type="button"
+                      onClick={copyPlainText}
+                      disabled={sections.length === 0}
+                      className="border border-stone-700 bg-[#fffaf0] px-3 py-2 text-xs font-black uppercase tracking-[0.12em] text-stone-950 transition hover:bg-amber-200 active:translate-y-[1px] disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      Copy Plain Text
+                    </button>
+                    <button
+                      type="button"
+                      onClick={downloadCeremonialPdf}
+                      disabled={sections.length === 0}
+                      className="border border-stone-700 bg-[#fffaf0] px-3 py-2 text-xs font-black uppercase tracking-[0.12em] text-stone-950 transition hover:bg-amber-200 active:translate-y-[1px] disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      Download Ceremonial PDF
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => window.print()}
+                      disabled={sections.length === 0}
+                      className="border border-stone-700 bg-[#fffaf0] px-3 py-2 text-xs font-black uppercase tracking-[0.12em] text-stone-950 transition hover:bg-amber-200 active:translate-y-[1px] disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      Browser Print Fallback
+                    </button>
+                  </div>
                 </div>
                 {copyMessage ? (
                   <p className="no-print mb-3 border border-stone-500 bg-[#fffaf0] px-3 py-2 text-sm font-bold text-stone-900">
@@ -1017,7 +1051,7 @@ export default function Home() {
                     {pdfExportMessage}
                   </p>
                 ) : null}
-                <div className="document-preview mx-auto min-h-[590px] max-w-3xl border border-stone-400 bg-[#fffaf0] px-5 py-6 shadow-[8px_8px_0_rgba(68,64,60,0.22)] sm:px-8">
+                <div className="document-preview mx-auto min-h-[720px] max-w-6xl border border-stone-400 bg-[#fffaf0] px-6 py-8 shadow-[10px_10px_0_rgba(68,64,60,0.18)] sm:px-10 lg:px-14">
                   <p className="document-kicker font-mono text-[11px] font-bold uppercase tracking-[0.18em] text-amber-900">
                     Comedy-powered drafting support. Not legal advice.
                   </p>
@@ -1088,6 +1122,17 @@ export default function Home() {
         </div>
       </div>
     </main>
+  );
+}
+
+function CompactMetric({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="border border-stone-700 bg-stone-950/70 px-3 py-2">
+      <p className="font-mono text-[10px] font-bold uppercase tracking-[0.14em] text-stone-500">
+        {label}
+      </p>
+      <p className="mt-1 truncate font-mono text-sm font-black text-amber-200">{value}</p>
+    </div>
   );
 }
 

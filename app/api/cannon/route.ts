@@ -44,12 +44,12 @@ const VALID_STANCES = [
 
 const LOG_MESSAGES = [
   "Loading passive voice artillery...",
-  "Consulting the Appendix Goblin...",
+  "Consulting the appendix desk...",
   "Deploying clarification shrapnel...",
   "Increasing whereas density...",
   "Ensuring no sentence is under 47 words...",
   "Packing footnote-adjacent material...",
-  "Summoning the municipal tone daemon...",
+  "Engaging the municipal tone engine...",
 ] as const;
 
 const FALLBACK_SECTION_TITLES = [

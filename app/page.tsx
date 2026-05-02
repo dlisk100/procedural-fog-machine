@@ -504,19 +504,18 @@ export default function Home() {
                 disabled={isGenerating}
                 className="min-h-14 border border-amber-200 bg-amber-300 px-5 py-4 text-left text-base font-black uppercase tracking-[0.12em] text-stone-950 shadow-[6px_6px_0_rgba(120,53,15,0.55)] transition hover:-translate-y-0.5 hover:bg-amber-200 active:translate-x-1 active:translate-y-1 active:shadow-none disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0"
               >
-                {isGenerating ? "FIRING THE FOG MACHINE..." : "FIRE THE FOG MACHINE"}
+                {isGenerating ? "FIRING SHELLS..." : "FIRE THE FOG MACHINE"}
               </button>
 
               <div className="grid gap-3 sm:grid-cols-2">
-                {canReset ? (
-                  <button
-                    type="button"
-                    onClick={resetOutput}
-                    className="border border-stone-600 px-4 py-3 text-sm font-bold uppercase tracking-[0.12em] text-stone-200 transition hover:border-stone-300 active:translate-y-[1px]"
-                  >
-                    Reset
-                  </button>
-                ) : null}
+                <button
+                  type="button"
+                  onClick={resetOutput}
+                  disabled={!canReset}
+                  className="border border-stone-600 px-4 py-3 text-sm font-bold uppercase tracking-[0.12em] text-stone-200 transition hover:border-stone-300 active:translate-y-[1px] disabled:cursor-not-allowed disabled:opacity-45"
+                >
+                  Reset
+                </button>
                 {finalHtml ? (
                   <button
                     type="button"
@@ -579,6 +578,24 @@ export default function Home() {
               </section>
 
               <section className="document-preview-shell min-h-[620px] border border-stone-700 bg-[#e9dfc9] p-3 text-stone-950 sm:p-5">
+                <div className="no-print mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                  <p className="text-sm font-bold text-stone-800">
+                    Partial sections stay visible even if the stream ends early.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={copyPlainText}
+                    disabled={sections.length === 0}
+                    className="border border-stone-700 bg-[#fffaf0] px-3 py-2 text-xs font-black uppercase tracking-[0.12em] text-stone-950 transition hover:bg-amber-200 active:translate-y-[1px] disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    Copy Plain Text
+                  </button>
+                </div>
+                {copyMessage ? (
+                  <p className="no-print mb-3 border border-stone-500 bg-[#fffaf0] px-3 py-2 text-sm font-bold text-stone-900">
+                    {copyMessage}
+                  </p>
+                ) : null}
                 <div className="document-preview mx-auto min-h-[590px] max-w-3xl border border-stone-400 bg-[#fffaf0] px-5 py-6 shadow-[8px_8px_0_rgba(68,64,60,0.22)] sm:px-8">
                   <p className="document-kicker font-mono text-[11px] font-bold uppercase tracking-[0.18em] text-amber-900">
                     Comedy-powered drafting support. Not legal advice.

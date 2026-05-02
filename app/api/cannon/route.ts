@@ -17,6 +17,10 @@ import type {
 export const dynamic = "force-dynamic";
 
 const encoder = new TextEncoder();
+const MAX_INPUT_LENGTH = 20_000;
+const MAX_SECTIONS = 24;
+const JAMMED_SECTION_CONTENT =
+  "This shell jammed briefly, but the procedural fog remains intact. Please regard this section as a courteous placeholder preserving the packet's ceremonial continuity without adding facts, admissions, threats, citations, or unnecessary confidence.";
 
 const VALID_DOMAINS = [
   "housing",
@@ -109,11 +113,15 @@ function validateRequest(value: unknown): CannonRequest {
 
   const input = value as Record<string, unknown>;
   const threatText = typeof input.threatText === "string" ? input.threatText.trim() : "";
-  const slopDensity =
+  const rawSlopDensity =
     typeof input.slopDensity === "number" ? input.slopDensity : Number(input.slopDensity);
 
   if (threatText.length < 5) {
     throw new Error("threatText is required and must be at least 5 characters.");
+  }
+
+  if (threatText.length > MAX_INPUT_LENGTH) {
+    throw new Error(`threatText must be ${MAX_INPUT_LENGTH.toLocaleString()} characters or fewer.`);
   }
 
   if (!isDomain(input.domain)) {
@@ -124,9 +132,11 @@ function validateRequest(value: unknown): CannonRequest {
     throw new Error("stance must be one of the supported cannon stances.");
   }
 
-  if (!Number.isFinite(slopDensity) || slopDensity < 1 || slopDensity > 10) {
-    throw new Error("slopDensity must be a number between 1 and 10.");
+  if (!Number.isFinite(rawSlopDensity)) {
+    throw new Error("slopDensity must be a number.");
   }
+
+  const slopDensity = Math.min(10, Math.max(1, rawSlopDensity));
 
   const governingDocumentText =
     typeof input.governingDocumentText === "string" &&
@@ -141,6 +151,67 @@ function validateRequest(value: unknown): CannonRequest {
     slopDensity,
     governingDocumentText,
   };
+}
+
+function extractFirstJsonObject(input: string): string | null {
+  const fencedMatch = input.match(/```(?:json)?\s*([\s\S]*?)```/i);
+  const source = fencedMatch?.[1] ?? input;
+  const start = source.indexOf("{");
+
+  if (start === -1) {
+    return null;
+  }
+
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+
+  for (let index = start; index < source.length; index += 1) {
+    const char = source[index];
+
+    if (escaped) {
+      escaped = false;
+      continue;
+    }
+
+    if (char === "\\") {
+      escaped = true;
+      continue;
+    }
+
+    if (char === '"') {
+      inString = !inString;
+      continue;
+    }
+
+    if (inString) {
+      continue;
+    }
+
+    if (char === "{") {
+      depth += 1;
+    }
+
+    if (char === "}") {
+      depth -= 1;
+
+      if (depth === 0) {
+        return source.slice(start, index + 1);
+      }
+    }
+  }
+
+  return null;
+}
+
+function safeParseJsonObject(input: string): unknown {
+  const extracted = extractFirstJsonObject(input);
+
+  if (!extracted) {
+    throw new Error("No JSON object was found in the model response.");
+  }
+
+  return JSON.parse(extracted) as unknown;
 }
 
 function densityTargetWords(slopDensity: number): number {
@@ -188,10 +259,7 @@ function fallbackOutline(request: CannonRequest): CannonOutline {
 }
 
 function parseOutlineJson(content: string, request: CannonRequest): CannonOutline {
-  const trimmed = content.trim();
-  const fencedMatch = trimmed.match(/```(?:json)?\s*([\s\S]*?)```/i);
-  const jsonCandidate = fencedMatch?.[1] ?? trimmed;
-  const parsed = JSON.parse(jsonCandidate) as Partial<CannonOutline>;
+  const parsed = safeParseJsonObject(content) as Partial<CannonOutline>;
 
   if (
     typeof parsed.title !== "string" ||
@@ -204,6 +272,7 @@ function parseOutlineJson(content: string, request: CannonRequest): CannonOutlin
 
   const targetWords = densityTargetWords(request.slopDensity);
   const sections = parsed.sections
+    .slice(0, MAX_SECTIONS)
     .map((section): OutlineSection | null => {
       if (
         !section ||
@@ -238,7 +307,7 @@ function parseOutlineJson(content: string, request: CannonRequest): CannonOutlin
   return {
     title: parsed.title,
     summary: parsed.summary,
-    sections,
+    sections: sections.slice(0, MAX_SECTIONS),
     appendixIdeas: parsed.appendixIdeas.filter((item): item is string => typeof item === "string"),
   };
 }
@@ -310,6 +379,15 @@ export async function POST(request: Request) {
           reviewBurden: "Initializing...",
         });
 
+        if (!process.env.OPENROUTER_API_KEY) {
+          writeEvent(controller, {
+            type: "error",
+            message:
+              "OPENROUTER_API_KEY is missing. Add it to .env.local, restart the dev server, and fire the cannon again.",
+          });
+          return;
+        }
+
         const outlineContent = await callOpenRouter(
           [
             {
@@ -340,8 +418,10 @@ export async function POST(request: Request) {
           outline = fallbackOutline(cannonRequest);
         }
 
-        for (let index = 0; index < outline.sections.length; index += 1) {
-          const section = outline.sections[index];
+        const sectionsToGenerate = outline.sections.slice(0, MAX_SECTIONS);
+
+        for (let index = 0; index < sectionsToGenerate.length; index += 1) {
+          const section = sectionsToGenerate[index];
           const shellNumber = index + 1;
 
           writeEvent(controller, {
@@ -351,33 +431,46 @@ export async function POST(request: Request) {
           writeEvent(controller, {
             type: "shell",
             shell: shellNumber,
-            total: outline.sections.length,
+            total: sectionsToGenerate.length,
             title: section.title,
             message: `Firing Shell ${shellNumber}: ${section.title}`,
           });
 
-          const content = await callOpenRouter(
-            [
+          let content: string;
+
+          try {
+            content = await callOpenRouter(
+              [
+                {
+                  role: "system",
+                  content:
+                    "You write safe, polite, non-admitting comedy bureaucracy. Do not give legal advice, invent citations, threaten, fabricate facts, or impersonate an attorney.",
+                },
+                {
+                  role: "user",
+                  content: buildSectionPrompt({
+                    request: cannonRequest,
+                    section,
+                    sectionNumber: shellNumber,
+                    totalSections: sectionsToGenerate.length,
+                  }),
+                },
+              ],
               {
-                role: "system",
-                content:
-                  "You write safe, polite, non-admitting comedy bureaucracy. Do not give legal advice, invent citations, threaten, fabricate facts, or impersonate an attorney.",
+                model: OPENROUTER_SECTION_MODEL,
+                temperature: 0.84,
               },
-              {
-                role: "user",
-                content: buildSectionPrompt({
-                  request: cannonRequest,
-                  section,
-                  sectionNumber: shellNumber,
-                  totalSections: outline.sections.length,
-                }),
-              },
-            ],
-            {
-              model: OPENROUTER_SECTION_MODEL,
-              temperature: 0.84,
-            },
-          );
+            );
+          } catch (error) {
+            const detail =
+              error instanceof Error ? ` ${error.message}` : " Unknown section error.";
+
+            writeEvent(controller, {
+              type: "log",
+              message: `Shell ${shellNumber} jammed briefly.${detail}`,
+            });
+            content = JAMMED_SECTION_CONTENT;
+          }
 
           generatedSections.push({
             title: section.title,
@@ -396,7 +489,7 @@ export async function POST(request: Request) {
 
           writeEvent(controller, {
             type: "metric",
-            ...calculateMetrics(generatedText, shellNumber / outline.sections.length),
+            ...calculateMetrics(generatedText, shellNumber / sectionsToGenerate.length),
           });
         }
 

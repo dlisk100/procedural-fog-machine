@@ -153,6 +153,7 @@ export default function Home() {
   const [isGenerating, setIsGenerating] = useState(false);
   const [error, setError] = useState("");
   const [completionMessage, setCompletionMessage] = useState("");
+  const [copyMessage, setCopyMessage] = useState("");
   const [shellProgress, setShellProgress] = useState<{ current: number; total: number } | null>(
     null,
   );
@@ -173,6 +174,7 @@ export default function Home() {
     setFinalHtml("");
     setError("");
     setCompletionMessage("");
+    setCopyMessage("");
     setShellProgress(null);
   }
 
@@ -226,6 +228,43 @@ export default function Home() {
     }
   }
 
+  function applyStreamLine(line: string): boolean {
+    const trimmed = line.trim();
+
+    if (!trimmed) {
+      return false;
+    }
+
+    try {
+      const event = JSON.parse(trimmed) as CannonEvent;
+      applyEvent(event);
+      return event.type === "done";
+    } catch {
+      setLogs((current) => [
+        ...current,
+        "Skipped one malformed stream line; partial packet remains available.",
+      ]);
+      return false;
+    }
+  }
+
+  async function copyPlainText() {
+    if (sections.length === 0) {
+      return;
+    }
+
+    const plainText = sections
+      .map((section, index) => `${index + 1}. ${section.title}\n\n${section.content}`)
+      .join("\n\n");
+
+    try {
+      await navigator.clipboard.writeText(plainText);
+      setCopyMessage("Generated packet text copied.");
+    } catch {
+      setCopyMessage("Copy failed. Browser clipboard permission may be unavailable.");
+    }
+  }
+
   async function fireFogMachine() {
     if (threatText.trim().length < 5) {
       setError("Paste at least five characters so the machine has something to over-process.");
@@ -235,6 +274,7 @@ export default function Home() {
     setIsGenerating(true);
     resetOutput();
     setLogs(["Procedural munitions armed.", "Loading breech with courtesy clauses..."]);
+    let receivedDone = false;
 
     try {
       const response = await fetch("/api/cannon", {
@@ -252,6 +292,10 @@ export default function Home() {
 
       if (!response.body) {
         throw new Error("The cannon returned no stream.");
+      }
+
+      if (!("getReader" in response.body)) {
+        throw new Error("This browser could not open the cannon stream.");
       }
 
       const reader = response.body.getReader();
@@ -273,14 +317,25 @@ export default function Home() {
             continue;
           }
 
-          applyEvent(JSON.parse(trimmed) as CannonEvent);
+          if (applyStreamLine(trimmed)) {
+            receivedDone = true;
+          }
         }
       }
 
       const remaining = buffer.trim();
 
       if (remaining) {
-        applyEvent(JSON.parse(remaining) as CannonEvent);
+        if (applyStreamLine(remaining)) {
+          receivedDone = true;
+        }
+      }
+
+      if (!receivedDone) {
+        setLogs((current) => [
+          ...current,
+          "Stream ended before final ceremony; preserving partial packet.",
+        ]);
       }
     } catch (caughtError) {
       const message =

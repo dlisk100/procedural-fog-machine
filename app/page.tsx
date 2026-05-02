@@ -102,6 +102,26 @@ function getDensityLabel(value: number): string {
   return "Appendix Singularity";
 }
 
+function getLiveStatus(args: {
+  isGenerating: boolean;
+  completionMessage: string;
+  error: string;
+}): string {
+  if (args.error) {
+    return "Fog machine jammed.";
+  }
+
+  if (args.isGenerating) {
+    return "Fog machine active. Please stand clear of the appendices.";
+  }
+
+  if (args.completionMessage) {
+    return "Cannon discharged. Bureaucracy deployed.";
+  }
+
+  return "Awaiting procedural provocation.";
+}
+
 function splitParagraphs(content: string): string[] {
   return content
     .split(/\n{2,}/)
@@ -124,8 +144,8 @@ function metricTone(fogIndex: number, isGenerating: boolean): string {
 export default function Home() {
   const [threatText, setThreatText] = useState("");
   const [domain, setDomain] = useState<Domain>("housing");
-  const [stance, setStance] = useState<Stance>("clarify");
-  const [slopDensity, setSlopDensity] = useState(5);
+  const [stance, setStance] = useState<Stance>("maximum_bureaucracy");
+  const [slopDensity, setSlopDensity] = useState(10);
   const [metrics, setMetrics] = useState<MetricState>(INITIAL_METRICS);
   const [logs, setLogs] = useState<string[]>(["Procedural munitions armed."]);
   const [sections, setSections] = useState<GeneratedPreviewSection[]>([]);
@@ -133,9 +153,17 @@ export default function Home() {
   const [isGenerating, setIsGenerating] = useState(false);
   const [error, setError] = useState("");
   const [completionMessage, setCompletionMessage] = useState("");
+  const [shellProgress, setShellProgress] = useState<{ current: number; total: number } | null>(
+    null,
+  );
 
   const densityLabel = useMemo(() => getDensityLabel(slopDensity), [slopDensity]);
   const statusLine = metricTone(metrics.fogIndex, isGenerating);
+  const liveStatus = getLiveStatus({ isGenerating, completionMessage, error });
+  const appendixPressure = Math.min(
+    100,
+    Math.max(0, Math.round(slopDensity * 8 + metrics.fogIndex * 0.2)),
+  );
   const canReset = !isGenerating && (sections.length > 0 || logs.length > 1 || Boolean(error));
 
   function resetOutput() {
@@ -145,6 +173,7 @@ export default function Home() {
     setFinalHtml("");
     setError("");
     setCompletionMessage("");
+    setShellProgress(null);
   }
 
   function applyEvent(event: CannonEvent) {
@@ -165,6 +194,7 @@ export default function Home() {
     }
 
     if (event.type === "shell") {
+      setShellProgress({ current: event.shell, total: event.total });
       setLogs((current) => [
         ...current,
         `${event.message} (${event.shell}/${event.total})`,
@@ -197,6 +227,11 @@ export default function Home() {
   }
 
   async function fireFogMachine() {
+    if (threatText.trim().length < 5) {
+      setError("Paste at least five characters so the machine has something to over-process.");
+      return;
+    }
+
     setIsGenerating(true);
     resetOutput();
     setLogs(["Procedural munitions armed.", "Loading breech with courtesy clauses..."]);
@@ -261,9 +296,9 @@ export default function Home() {
   }
 
   return (
-    <main className="min-h-[100dvh] bg-[#15130f] text-stone-100">
+    <main className="app-shell min-h-[100dvh] bg-[#15130f] text-stone-100">
       <div className="mx-auto flex w-full max-w-7xl flex-col gap-6 px-4 py-5 sm:px-6 lg:px-8">
-        <header className="grid gap-5 border-b border-stone-700/70 pb-5 md:grid-cols-[1.4fr_0.6fr] md:items-end">
+        <header className="no-print grid gap-5 border-b border-stone-700/70 pb-5 md:grid-cols-[1.4fr_0.6fr] md:items-end">
           <div>
             <p className="mb-3 font-mono text-xs uppercase tracking-[0.2em] text-amber-300">
               Comedy-powered drafting support. Not legal advice.
@@ -283,8 +318,36 @@ export default function Home() {
           </div>
         </header>
 
+        <section
+          className={`no-print border px-4 py-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.08)] sm:px-5 ${
+            error
+              ? "border-red-300/50 bg-red-950/35"
+              : completionMessage
+                ? "border-emerald-300/40 bg-emerald-950/30"
+                : isGenerating
+                  ? "border-amber-300/50 bg-amber-950/25"
+                  : "border-stone-700 bg-stone-950/55"
+          }`}
+        >
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <p className="font-mono text-xs uppercase tracking-[0.18em] text-stone-400">
+                Live Status
+              </p>
+              <p className="mt-1 text-2xl font-black tracking-tight text-stone-50">
+                {liveStatus}
+              </p>
+            </div>
+            <div className="border border-stone-600/70 bg-stone-950/70 px-4 py-3 font-mono text-sm text-amber-200">
+              {shellProgress
+                ? `Shell ${shellProgress.current} of ${shellProgress.total}`
+                : "Shells awaiting authorization"}
+            </div>
+          </div>
+        </section>
+
         <div className="grid gap-5 lg:grid-cols-[0.9fr_1.25fr]">
-          <section className="border border-stone-700 bg-[#211d17] p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)] sm:p-5">
+          <section className="no-print border border-stone-700 bg-[#211d17] p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)] sm:p-5">
             <div className="mb-5 flex items-start justify-between gap-3">
               <div>
                 <h2 className="text-xl font-bold tracking-tight">Input Bay</h2>
@@ -369,6 +432,11 @@ export default function Home() {
                 />
               </label>
 
+              <p className="border-l-2 border-amber-300/70 bg-stone-950/50 px-3 py-2 text-sm leading-6 text-stone-300">
+                For comedy and drafting support only. Not legal advice. Do not use to
+                threaten, harass, fabricate facts, or ignore real deadlines.
+              </p>
+
               {error ? (
                 <div className="border border-red-300/40 bg-red-950/30 px-3 py-2 text-sm text-red-100">
                   {error}
@@ -408,16 +476,32 @@ export default function Home() {
           </section>
 
           <section className="grid gap-5">
-            <div className="grid grid-cols-2 gap-3 xl:grid-cols-5">
+            <div className="no-print metrics-grid grid grid-cols-2 gap-3 xl:grid-cols-6">
               <MetricCard label="Estimated Pages" value={String(metrics.pages)} />
-              <MetricCard label="Admissions Made" value={String(metrics.admissions)} />
-              <MetricCard label="Procedural Fog Index" value={String(metrics.fogIndex)} />
+              <MetricCard
+                label="Admissions Made"
+                value="0"
+                caption="clinically maintained"
+              />
+              <MetricCard
+                label="Procedural Fog Index"
+                value={`${metrics.fogIndex}/100`}
+              />
               <MetricCard label="Clarifying Questions" value={String(metrics.questions)} />
-              <MetricCard label="Estimated Review Burden" value={metrics.reviewBurden} />
+              <MetricCard
+                label="Estimated Review Burden"
+                value={metrics.reviewBurden}
+                caption="ceremonial estimate"
+              />
+              <MetricCard
+                label="Appendix Pressure"
+                value={`${appendixPressure}/100`}
+                caption="paperwork weather"
+              />
             </div>
 
             <div className="grid gap-5 xl:grid-cols-[0.75fr_1.25fr]">
-              <section className="min-h-72 border border-stone-700 bg-stone-950 p-4">
+              <section className="no-print min-h-72 border border-stone-700 bg-stone-950 p-4">
                 <div className="mb-3 flex items-center justify-between gap-3">
                   <h2 className="text-lg font-bold">Live Shell Log</h2>
                   <span className="font-mono text-xs uppercase tracking-[0.16em] text-amber-300">
@@ -439,36 +523,59 @@ export default function Home() {
                 </div>
               </section>
 
-              <section className="min-h-[620px] border border-stone-700 bg-[#e9dfc9] p-3 text-stone-950 sm:p-5">
-                <div className="mx-auto min-h-[590px] max-w-3xl border border-stone-400 bg-[#fffaf0] px-5 py-6 shadow-[8px_8px_0_rgba(68,64,60,0.22)] sm:px-8">
-                  <p className="font-mono text-[11px] font-bold uppercase tracking-[0.18em] text-amber-900">
+              <section className="document-preview-shell min-h-[620px] border border-stone-700 bg-[#e9dfc9] p-3 text-stone-950 sm:p-5">
+                <div className="document-preview mx-auto min-h-[590px] max-w-3xl border border-stone-400 bg-[#fffaf0] px-5 py-6 shadow-[8px_8px_0_rgba(68,64,60,0.22)] sm:px-8">
+                  <p className="document-kicker font-mono text-[11px] font-bold uppercase tracking-[0.18em] text-amber-900">
                     Comedy-powered drafting support. Not legal advice.
                   </p>
-                  <h2 className="mt-3 text-3xl font-black tracking-tight">
+                  <h2 className="document-title mt-3 text-3xl font-black tracking-tight">
                     Procedural Response Packet
                   </h2>
-                  <p className="mt-2 border-b border-stone-300 pb-4 font-mono text-xs uppercase tracking-[0.12em] text-stone-600">
-                    Admissions made: 0
-                  </p>
+                  <div className="document-metadata mt-4 grid gap-2 border-y border-stone-300 py-4 font-mono text-xs uppercase tracking-[0.1em] text-stone-700 sm:grid-cols-3">
+                    <p>
+                      <span className="block text-stone-500">Packet Status</span>
+                      Procedurally Overbuilt
+                    </p>
+                    <p>
+                      <span className="block text-stone-500">Tone</span>
+                      Weaponized Politeness
+                    </p>
+                    <p>
+                      <span className="block text-stone-500">Admissions</span>0
+                    </p>
+                  </div>
 
                   {completionMessage ? (
-                    <div className="mt-4 border border-emerald-800 bg-emerald-50 px-3 py-2 text-sm font-bold text-emerald-950">
+                    <div className="no-print mt-4 border border-emerald-800 bg-emerald-50 px-3 py-2 text-sm font-bold text-emerald-950">
                       {completionMessage}
                     </div>
                   ) : null}
 
                   {sections.length === 0 ? (
-                    <div className="mt-16 border border-dashed border-stone-400 px-5 py-8 text-center">
-                      <p className="text-lg font-bold">Awaiting shell impact.</p>
-                      <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-stone-600">
-                        Generated sections will assemble here into a formal packet while the
-                        logs report every plume of procedural mist.
+                    <div className="empty-preview mt-16 border border-dashed border-stone-400 px-5 py-8 text-center">
+                      <p className="text-lg font-bold">
+                        {isGenerating ? "Formal packet condensing..." : "Awaiting shell impact."}
                       </p>
+                      <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-stone-600">
+                        {isGenerating
+                          ? "The machine is pressurizing passive voice and checking that admissions remain precisely absent."
+                          : "Generated sections will assemble here into a formal packet while the logs report every plume of procedural mist."}
+                      </p>
+                      {isGenerating ? (
+                        <div className="mx-auto mt-6 grid max-w-md gap-2">
+                          <div className="h-3 animate-pulse bg-stone-300" />
+                          <div className="h-3 animate-pulse bg-stone-300 [animation-delay:120ms]" />
+                          <div className="h-3 w-2/3 animate-pulse bg-stone-300 [animation-delay:240ms]" />
+                        </div>
+                      ) : null}
                     </div>
                   ) : (
                     <div className="mt-6 space-y-8">
                       {sections.map((section, index) => (
-                        <article key={`${section.title}-${index}`} className="break-inside-avoid">
+                        <article
+                          key={`${section.title}-${index}`}
+                          className="doc-section break-inside-avoid"
+                        >
                           <h3 className="border-b border-stone-300 pb-2 text-xl font-black">
                             {index + 1}. {section.title}
                           </h3>
@@ -491,13 +598,26 @@ export default function Home() {
   );
 }
 
-function MetricCard({ label, value }: { label: string; value: string }) {
+function MetricCard({
+  label,
+  value,
+  caption,
+}: {
+  label: string;
+  value: string;
+  caption?: string;
+}) {
   return (
-    <div className="border border-stone-700 bg-[#211d17] p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]">
+    <div className="metric-card border border-stone-700 bg-[#211d17] p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]">
       <p className="min-h-8 text-[11px] font-bold uppercase tracking-[0.14em] text-stone-400">
         {label}
       </p>
       <p className="mt-2 font-mono text-2xl font-black text-amber-200">{value}</p>
+      {caption ? (
+        <p className="mt-1 font-mono text-[10px] uppercase tracking-[0.12em] text-stone-500">
+          {caption}
+        </p>
+      ) : null}
     </div>
   );
 }

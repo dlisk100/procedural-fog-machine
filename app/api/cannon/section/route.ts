@@ -5,7 +5,7 @@ import { buildSectionPrompt } from "@/lib/prompts";
 import type { OutlineSection } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
-export const maxDuration = 90;
+export const maxDuration = 300;
 
 function validateSection(value: unknown): OutlineSection {
   if (!value || typeof value !== "object") {
@@ -87,7 +87,7 @@ export async function POST(request: Request) {
           model: OPENROUTER_SECTION_MODEL,
           temperature: 0.84,
           maxTokens: 2400,
-          timeoutMs: 80_000,
+          timeoutMs: 260_000,
         },
       );
       console.info(

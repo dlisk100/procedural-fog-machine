@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type {
   CannonOutline,
   Domain,
@@ -15,6 +15,36 @@ const SAMPLE_INPUT =
 const JAMMED_SECTION_CONTENT =
   "This shell jammed briefly, but the procedural fog remains intact. Please regard this section as a courteous placeholder preserving the packet's ceremonial continuity without adding facts, admissions, threats, citations, or unnecessary confidence.";
 const SECTION_RETRY_DELAYS_MS = [1500, 4000, 8000];
+const MAX_PDF_EXPORT_PAYLOAD_BYTES = 3_900_000;
+
+const GENERATION_STATUS_MESSAGES = [
+  "Writing slop.",
+  "Creating a bureaucratic morass.",
+  "Generating legalese.",
+  "Pressurizing passive voice.",
+  "Indexing needless caveats.",
+  "Preparing non-admission vapor.",
+  "Routing clauses through committee.",
+  "Packing the appendix chamber.",
+  "Stacking clarifying inquiries.",
+  "Reheating municipal tone.",
+  "Drafting procedural fog.",
+  "Increasing whereas density.",
+  "Calibrating politeness artillery.",
+  "Manufacturing administrative overburden.",
+  "Loading courtesy clauses.",
+  "Compounding definitional ambiguity.",
+  "Casting formal mist.",
+  "Reinforcing admissions at zero.",
+  "Assembling a compliance labyrinth.",
+  "Deploying paperwork weather.",
+  "Auditing the caveat reservoir.",
+  "Reclassifying simple nouns.",
+  "Spooling ceremonial review burden.",
+  "Converting panic into packet.",
+  "Escalating through formatting standards.",
+  "Distilling pure procedural surface area.",
+];
 
 const DOMAIN_OPTIONS: Array<{ value: Domain; label: string }> = [
   { value: "housing", label: "Housing" },
@@ -81,6 +111,19 @@ type SectionApiResponse =
   | {
       ok: false;
       error: string;
+    };
+
+type SectionStreamEvent =
+  | {
+      type: "chunk";
+      content: string;
+    }
+  | {
+      type: "done";
+      title: string;
+      content: string;
+      placeholder?: boolean;
+      warning?: string;
     };
 
 type InflateApiResponse =
@@ -275,6 +318,113 @@ async function fetchSectionResult(args: {
   };
 }
 
+async function fetchStreamingSectionResult(args: {
+  requestPayload: CannonRequestPayload;
+  section: OutlineSection;
+  shell: number;
+  total: number;
+  onChunk: (content: string) => void;
+  onRetry?: (message: string) => void;
+}): Promise<SectionApiResponse> {
+  try {
+    const response = await fetch("/api/cannon/section-stream", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        request: args.requestPayload,
+        section: args.section,
+        sectionNumber: args.shell,
+        totalSections: args.total,
+      }),
+      cache: "no-store",
+    });
+
+    if (!response.ok || !response.body) {
+      throw new Error(`Streaming shell ${args.shell} failed (${response.status}).`);
+    }
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+    let content = "";
+    let placeholder = false;
+    let warning = "";
+
+    while (true) {
+      const { value, done } = await reader.read();
+
+      if (done) {
+        break;
+      }
+
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split("\n");
+      buffer = lines.pop() ?? "";
+
+      for (const rawLine of lines) {
+        const line = rawLine.trim();
+
+        if (!line) {
+          continue;
+        }
+
+        let event: SectionStreamEvent;
+
+        try {
+          event = JSON.parse(line) as SectionStreamEvent;
+        } catch {
+          continue;
+        }
+
+        if (event.type === "chunk") {
+          content += event.content;
+          args.onChunk(content);
+        }
+
+        if (event.type === "done") {
+          content = event.content || content;
+          placeholder = Boolean(event.placeholder);
+          warning = event.warning ?? warning;
+          args.onChunk(content);
+        }
+      }
+    }
+
+    if (!content.trim()) {
+      throw new Error("Streaming shell ended without section content.");
+    }
+
+    return {
+      ok: true,
+      section: {
+        title: args.section.title,
+        content,
+      },
+      shell: args.shell,
+      total: args.total,
+      placeholder,
+      warning,
+    };
+  } catch (error) {
+    const message =
+      error instanceof Error ? error.message : "Streaming section request failed.";
+
+    args.onRetry?.(
+      `Shell ${args.shell} streaming plume wobbled: ${message}. Falling back to sealed section request...`,
+    );
+
+    return fetchSectionResult({
+      requestPayload: args.requestPayload,
+      section: args.section,
+      shell: args.shell,
+      total: args.total,
+      onRetry: args.onRetry,
+    });
+  }
+}
+
 async function fetchInflateResult(args: {
   requestPayload: CannonRequestPayload;
   section: GeneratedPreviewSection;
@@ -373,18 +523,29 @@ export default function Home() {
   const [pdfWarning, setPdfWarning] = useState("");
   const [pdfError, setPdfError] = useState("");
   const [pdfMeta, setPdfMeta] = useState<PdfMeta | null>(null);
+  const [statusMessageIndex, setStatusMessageIndex] = useState(0);
   const [shellProgress, setShellProgress] = useState<{ current: number; total: number } | null>(
     null,
   );
 
   const densityLabel = useMemo(() => getDensityLabel(slopDensity), [slopDensity]);
-  const statusLine = metricTone(metrics.fogIndex, isGenerating);
+  const statusLine = isGenerating
+    ? (GENERATION_STATUS_MESSAGES[statusMessageIndex] ?? "Writing slop.")
+    : metricTone(metrics.fogIndex, isGenerating);
   const liveStatus = getLiveStatus({ isGenerating, completionMessage, error });
-  const appendixPressure = Math.min(
-    100,
-    Math.max(0, Math.round(slopDensity * 8 + metrics.fogIndex * 0.2)),
-  );
   const canReset = !isGenerating && (sections.length > 0 || logs.length > 1 || Boolean(error));
+
+  useEffect(() => {
+    if (!isGenerating) {
+      return undefined;
+    }
+
+    const interval = window.setInterval(() => {
+      setStatusMessageIndex((current) => (current + 1) % GENERATION_STATUS_MESSAGES.length);
+    }, 6500);
+
+    return () => window.clearInterval(interval);
+  }, [isGenerating]);
 
   function resetOutput() {
     setMetrics(INITIAL_METRICS);
@@ -423,21 +584,32 @@ export default function Home() {
     setPdfExportMessage("PDF cannon warming ceremonial rollers...");
 
     try {
+      const payload = {
+        title: "Procedural Response Packet",
+        sections,
+        metrics: {
+          pages: metrics.pages,
+          questions: metrics.questions,
+          fogIndex: metrics.fogIndex,
+          reviewBurden: metrics.reviewBurden,
+        },
+      };
+      const payloadText = JSON.stringify(payload);
+
+      if (new Blob([payloadText]).size > MAX_PDF_EXPORT_PAYLOAD_BYTES) {
+        setPdfExportMessage(
+          "This packet is too enormous for hosted PDF download. Opening the browser PDF exporter.",
+        );
+        window.print();
+        return;
+      }
+
       const response = await fetch("/api/export-pdf", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({
-          title: "Procedural Response Packet",
-          sections,
-          metrics: {
-            pages: metrics.pages,
-            questions: metrics.questions,
-            fogIndex: metrics.fogIndex,
-            reviewBurden: metrics.reviewBurden,
-          },
-        }),
+        body: payloadText,
       });
 
       if (!response.ok) {
@@ -455,7 +627,10 @@ export default function Home() {
       URL.revokeObjectURL(url);
       setPdfExportMessage("Ceremonial PDF downloaded.");
     } catch {
-      setPdfExportMessage("PDF cannon jammed. Use browser Print / Save as PDF fallback.");
+      setPdfExportMessage(
+        "PDF cannon jammed. Opening the browser PDF exporter for this packet.",
+      );
+      window.print();
     }
   }
 
@@ -511,6 +686,7 @@ export default function Home() {
     }
 
     setIsGenerating(true);
+    setStatusMessageIndex(0);
     resetOutput();
     setLogs([
       "Procedural munitions armed.",
@@ -554,7 +730,11 @@ export default function Home() {
         `Outline loaded: ${outlineSections.length} shells queued.`,
       ]);
 
-      const generatedSections: GeneratedPreviewSection[] = [];
+      const generatedSections: GeneratedPreviewSection[] = outlineSections.map((section) => ({
+        title: section.title,
+        content: "",
+      }));
+      setSections([...generatedSections]);
 
       for (let index = 0; index < outlineSections.length; index += 1) {
         const section = outlineSections[index] as OutlineSection;
@@ -567,11 +747,19 @@ export default function Home() {
           `Firing Shell ${shell}: ${section.title} (${shell}/${total})`,
         ]);
 
-        const sectionResult = await fetchSectionResult({
+        const sectionResult = await fetchStreamingSectionResult({
           requestPayload,
           section,
           shell,
           total,
+          onChunk: (content) => {
+            generatedSections[index] = {
+              title: section.title,
+              content,
+            };
+            setSections([...generatedSections]);
+            setMetrics(calculateClientMetrics(generatedSections, shell / total));
+          },
           onRetry: (message) => {
             setLogs((current) => [...current, message]);
           },
@@ -588,7 +776,7 @@ export default function Home() {
           ]);
         }
 
-        generatedSections.push(sectionResult.section);
+        generatedSections[index] = sectionResult.section;
         setSections([...generatedSections]);
         setMetrics(calculateClientMetrics(generatedSections, shell / total));
       }
@@ -667,19 +855,25 @@ export default function Home() {
     <main className="app-shell min-h-[100dvh] bg-[#15130f] text-stone-100">
       <div className="mx-auto flex w-full max-w-[1600px] flex-col gap-6 px-4 py-5 sm:px-6 lg:px-8">
         <header className="no-print border-b border-stone-700/70 pb-5">
-          <div>
-            <p className="mb-3 font-mono text-xs font-black uppercase tracking-[0.28em] text-amber-300">
-              FLOOD THE ZONE
-            </p>
-            <h1 className="max-w-5xl text-4xl font-black leading-none tracking-tight text-stone-50 md:text-6xl">
-              The Procedural Fog Machine
-            </h1>
+          <div className="flex items-center gap-4">
+            <CannonMark className="h-16 w-16 shrink-0 md:h-20 md:w-20" />
+            <div>
+              <p className="mb-2 font-mono text-xs font-black uppercase tracking-[0.28em] text-amber-300">
+                FLOOD THE ZONE
+              </p>
+              <h1 className="max-w-5xl text-4xl font-black leading-none tracking-tight text-stone-50 md:text-6xl">
+                The Procedural Fog Machine
+              </h1>
+              <p className="mt-3 font-mono text-sm font-bold uppercase tracking-[0.18em] text-red-300">
+                Not legal advice
+              </p>
+            </div>
           </div>
         </header>
 
         {isGenerating || sections.length > 0 || finalHtml || error || completionMessage ? (
           <section className="no-print sticky top-0 z-20 border border-stone-700/80 bg-[#15130f]/95 shadow-[0_12px_32px_rgba(0,0,0,0.28)] backdrop-blur">
-            <div className="grid gap-3 px-3 py-3 lg:grid-cols-[minmax(220px,1.3fr)_minmax(0,2fr)_auto] lg:items-center">
+            <div className="grid gap-3 px-3 py-3 lg:grid-cols-[minmax(220px,1.05fr)_minmax(0,2fr)] lg:items-center">
               <div>
                 <p className="font-mono text-[10px] font-bold uppercase tracking-[0.18em] text-stone-500">
                   Cannon Status
@@ -702,32 +896,6 @@ export default function Home() {
                 <CompactMetric label="Admissions" value="0" />
                 <CompactMetric label="Fog" value={`${metrics.fogIndex}/100`} />
                 <CompactMetric label="Review" value={metrics.reviewBurden} />
-              </div>
-              <div className="grid gap-2 sm:grid-cols-3 lg:min-w-[390px]">
-                <button
-                  type="button"
-                  onClick={copyPlainText}
-                  disabled={sections.length === 0}
-                  className="border border-stone-600 px-3 py-2 text-xs font-black uppercase tracking-[0.12em] text-stone-200 transition hover:border-amber-300 hover:text-amber-200 active:translate-y-[1px] disabled:cursor-not-allowed disabled:opacity-40"
-                >
-                  Copy Text
-                </button>
-                <button
-                  type="button"
-                  onClick={downloadCeremonialPdf}
-                  disabled={sections.length === 0}
-                  className="border border-amber-300 px-3 py-2 text-xs font-black uppercase tracking-[0.12em] text-amber-200 transition hover:bg-amber-300 hover:text-stone-950 active:translate-y-[1px] disabled:cursor-not-allowed disabled:opacity-40"
-                >
-                  Download PDF
-                </button>
-                <button
-                  type="button"
-                  onClick={() => window.print()}
-                  disabled={sections.length === 0}
-                  className="border border-stone-600 px-3 py-2 text-xs font-black uppercase tracking-[0.12em] text-stone-200 transition hover:border-stone-300 active:translate-y-[1px] disabled:cursor-not-allowed disabled:opacity-40"
-                >
-                  Print Fallback
-                </button>
               </div>
             </div>
           </section>
@@ -766,7 +934,7 @@ export default function Home() {
             </div>
 
             <div className="grid gap-4 p-4 lg:grid-cols-[minmax(0,1.35fr)_minmax(360px,0.9fr)] sm:p-5">
-              <label className="grid gap-2">
+              <label className="grid content-start gap-2">
                 <span className="text-sm font-semibold text-stone-200">
                   Paste the scary message
                 </span>
@@ -926,13 +1094,8 @@ export default function Home() {
                 />
               </label>
 
-              <p className="border-l-2 border-amber-300/70 bg-stone-950/50 px-3 py-2 text-sm leading-6 text-stone-300 lg:col-span-2">
-                Comedy-powered drafting support. Not legal advice. Do not use to
-                threaten, harass, fabricate facts, or ignore real deadlines.
-              </p>
-
               {error ? (
-                <div className="border border-red-300/40 bg-red-950/30 px-3 py-2 text-sm text-red-100">
+                <div className="border border-red-300/40 bg-red-950/30 px-3 py-2 text-sm text-red-100 lg:col-span-2">
                   {error}
                 </div>
               ) : null}
@@ -941,39 +1104,16 @@ export default function Home() {
                 type="button"
                 onClick={fireFogMachine}
                 disabled={isGenerating}
-                className="min-h-14 border border-amber-200 bg-amber-300 px-5 py-4 text-left text-base font-black uppercase tracking-[0.12em] text-stone-950 shadow-[6px_6px_0_rgba(120,53,15,0.55)] transition hover:-translate-y-0.5 hover:bg-amber-200 active:translate-x-1 active:translate-y-1 active:shadow-none disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0"
+                className="flex min-h-16 w-full items-center justify-between gap-4 border border-amber-200 bg-amber-300 px-5 py-4 text-left text-base font-black uppercase tracking-[0.12em] text-stone-950 shadow-[6px_6px_0_rgba(120,53,15,0.55)] transition hover:-translate-y-0.5 hover:bg-amber-200 active:translate-x-1 active:translate-y-1 active:shadow-none disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0 lg:col-span-2"
               >
-                {isGenerating ? "FIRING SHELLS..." : "FIRE THE FOG MACHINE"}
+                <span>{isGenerating ? "FIRING SHELLS..." : "FIRE THE FOG MACHINE"}</span>
+                <CannonMark className="h-10 w-10 shrink-0" dark />
               </button>
 
             </div>
           </section>
 
           <section className="grid gap-5">
-            <div className="no-print metrics-grid hidden grid-cols-2 gap-3 xl:grid-cols-6">
-              <MetricCard label="Estimated Pages" value={String(metrics.pages)} />
-              <MetricCard
-                label="Admissions Made"
-                value="0"
-                caption="clinically maintained"
-              />
-              <MetricCard
-                label="Procedural Fog Index"
-                value={`${metrics.fogIndex}/100`}
-              />
-              <MetricCard label="Clarifying Questions" value={String(metrics.questions)} />
-              <MetricCard
-                label="Estimated Review Burden"
-                value={metrics.reviewBurden}
-                caption="ceremonial estimate"
-              />
-              <MetricCard
-                label="Appendix Pressure"
-                value={`${appendixPressure}/100`}
-                caption="paperwork weather"
-              />
-            </div>
-
             <div className="grid gap-5">
               <section className="no-print min-h-72 border border-stone-700 bg-stone-950 p-4">
                 <div className="mb-3 flex items-center justify-between gap-3">
@@ -1002,19 +1142,16 @@ export default function Home() {
               </section>
 
               <section className="document-preview-shell min-h-[760px] border border-stone-700 bg-[#e9dfc9] p-3 text-stone-950 sm:p-5 lg:p-7">
-                <div className="no-print mb-4 grid gap-3 border-b border-stone-400/70 pb-4 lg:grid-cols-[1fr_auto] lg:items-center">
+                <div className="no-print sticky top-[92px] z-10 -mx-3 mb-4 grid gap-3 border-b border-stone-400/70 bg-[#e9dfc9]/95 px-3 py-2 backdrop-blur sm:-mx-5 sm:px-5 lg:-mx-7 lg:grid-cols-[1fr_auto] lg:items-center lg:px-7">
                   <div>
                     <p className="font-mono text-[11px] font-bold uppercase tracking-[0.18em] text-stone-600">
                       Packet Theater
                     </p>
-                    <h2 className="mt-1 text-2xl font-black tracking-tight text-stone-950">
+                    <h2 className="mt-0.5 text-xl font-black tracking-tight text-stone-950">
                       Generated packet
                     </h2>
-                    <p className="mt-1 text-sm font-bold text-stone-700">
-                      Partial sections stay visible even if generation ends early.
-                    </p>
                   </div>
-                  <div className="grid gap-2 sm:grid-cols-3">
+                  <div className="grid gap-2 sm:grid-cols-2">
                     <button
                       type="button"
                       onClick={copyPlainText}
@@ -1030,14 +1167,6 @@ export default function Home() {
                       className="border border-stone-700 bg-[#fffaf0] px-3 py-2 text-xs font-black uppercase tracking-[0.12em] text-stone-950 transition hover:bg-amber-200 active:translate-y-[1px] disabled:cursor-not-allowed disabled:opacity-50"
                     >
                       Download Ceremonial PDF
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => window.print()}
-                      disabled={sections.length === 0}
-                      className="border border-stone-700 bg-[#fffaf0] px-3 py-2 text-xs font-black uppercase tracking-[0.12em] text-stone-950 transition hover:bg-amber-200 active:translate-y-[1px] disabled:cursor-not-allowed disabled:opacity-50"
-                    >
-                      Browser Print Fallback
                     </button>
                   </div>
                 </div>
@@ -1136,26 +1265,52 @@ function CompactMetric({ label, value }: { label: string; value: string }) {
   );
 }
 
-function MetricCard({
-  label,
-  value,
-  caption,
-}: {
-  label: string;
-  value: string;
-  caption?: string;
-}) {
+function CannonMark({ className, dark = false }: { className?: string; dark?: boolean }) {
   return (
-    <div className="metric-card border border-stone-700 bg-[#211d17] p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]">
-      <p className="min-h-8 text-[11px] font-bold uppercase tracking-[0.14em] text-stone-400">
-        {label}
-      </p>
-      <p className="mt-2 font-mono text-2xl font-black text-amber-200">{value}</p>
-      {caption ? (
-        <p className="mt-1 font-mono text-[10px] uppercase tracking-[0.12em] text-stone-500">
-          {caption}
-        </p>
-      ) : null}
-    </div>
+    <svg
+      viewBox="0 0 120 120"
+      aria-hidden="true"
+      className={className}
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+    >
+      <rect
+        x="10"
+        y="10"
+        width="100"
+        height="100"
+        fill={dark ? "#15130f" : "#4a1111"}
+        stroke={dark ? "#15130f" : "#fca5a5"}
+        strokeWidth="4"
+      />
+      <path
+        d="M33 72h42c11 0 19-8 19-19v-5H56c-13 0-23 10-23 23v1Z"
+        fill={dark ? "#b91c1c" : "#ef4444"}
+        stroke={dark ? "#15130f" : "#fee2e2"}
+        strokeWidth="5"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M76 48V33h16v15"
+        stroke={dark ? "#15130f" : "#fee2e2"}
+        strokeWidth="5"
+        strokeLinecap="square"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M26 78h62"
+        stroke={dark ? "#15130f" : "#fef3c7"}
+        strokeWidth="6"
+        strokeLinecap="square"
+      />
+      <circle cx="43" cy="87" r="8" fill={dark ? "#15130f" : "#fbbf24"} />
+      <circle cx="78" cy="87" r="8" fill={dark ? "#15130f" : "#fbbf24"} />
+      <path
+        d="M22 38h18M18 51h15M24 64h10"
+        stroke={dark ? "#15130f" : "#fbbf24"}
+        strokeWidth="5"
+        strokeLinecap="square"
+      />
+    </svg>
   );
 }

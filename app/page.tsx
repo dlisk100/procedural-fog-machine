@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import { useEffect, useMemo, useState } from "react";
 import type {
   CannonOutline,
@@ -15,6 +16,8 @@ const SAMPLE_INPUT =
 const JAMMED_SECTION_CONTENT =
   "This shell jammed briefly, but the procedural fog remains intact. Please regard this section as a courteous placeholder preserving the packet's ceremonial continuity without adding facts, admissions, threats, citations, or unnecessary confidence.";
 const SECTION_RETRY_DELAYS_MS = [1500, 4000, 8000];
+const BASE_SECTION_CONCURRENCY = 6;
+const INFLATE_CONCURRENCY = 4;
 const MAX_PDF_EXPORT_PAYLOAD_BYTES = 3_900_000;
 
 const GENERATION_STATUS_MESSAGES = [
@@ -85,6 +88,12 @@ type PdfMeta = {
   totalPages: number;
   charCount: number;
   truncated: boolean;
+};
+
+type ProgressState = {
+  label: string;
+  current: number;
+  total: number;
 };
 
 type OutlineApiResponse =
@@ -179,6 +188,14 @@ function getDensityLabel(value: number): string {
   return "Appendix Singularity";
 }
 
+function formatDensityValue(value: number): string {
+  if (value === 11) {
+    return "11/10, This one goes to eleven";
+  }
+
+  return `${value}/10, ${getDensityLabel(value)}`;
+}
+
 function getLiveStatus(args: {
   isGenerating: boolean;
   completionMessage: string;
@@ -255,6 +272,29 @@ function calculateClientMetrics(
     questions,
     reviewBurden,
   };
+}
+
+async function runWithConcurrency<T>(
+  items: T[],
+  concurrency: number,
+  worker: (item: T, index: number) => Promise<void>,
+): Promise<void> {
+  let nextIndex = 0;
+  const workerCount = Math.min(Math.max(1, concurrency), items.length);
+
+  await Promise.all(
+    Array.from({ length: workerCount }, async () => {
+      while (nextIndex < items.length) {
+        const index = nextIndex;
+        nextIndex += 1;
+        const item = items[index];
+
+        if (item) {
+          await worker(item, index);
+        }
+      }
+    }),
+  );
 }
 
 async function fetchSectionResult(args: {
@@ -524,11 +564,9 @@ export default function Home() {
   const [pdfError, setPdfError] = useState("");
   const [pdfMeta, setPdfMeta] = useState<PdfMeta | null>(null);
   const [statusMessageIndex, setStatusMessageIndex] = useState(0);
-  const [shellProgress, setShellProgress] = useState<{ current: number; total: number } | null>(
-    null,
-  );
+  const [shellProgress, setShellProgress] = useState<ProgressState | null>(null);
 
-  const densityLabel = useMemo(() => getDensityLabel(slopDensity), [slopDensity]);
+  const densityLabel = useMemo(() => formatDensityValue(slopDensity), [slopDensity]);
   const statusLine = isGenerating
     ? (GENERATION_STATUS_MESSAGES[statusMessageIndex] ?? "Writing slop.")
     : metricTone(metrics.fogIndex, isGenerating);
@@ -736,29 +774,60 @@ export default function Home() {
       }));
       setSections([...generatedSections]);
 
-      for (let index = 0; index < outlineSections.length; index += 1) {
-        const section = outlineSections[index] as OutlineSection;
-        const shell = index + 1;
-        const total = outlineSections.length;
+      let launchedSections = 0;
+      let completedSections = 0;
+      const totalBaseSections = outlineSections.length;
 
-        setShellProgress({ current: shell, total });
+      setLogs((current) => [
+        ...current,
+        `Launching base volley 1: shells 1-${Math.min(
+          BASE_SECTION_CONCURRENCY,
+          totalBaseSections,
+        )}.`,
+      ]);
+
+      await runWithConcurrency(outlineSections, BASE_SECTION_CONCURRENCY, async (section, index) => {
+        const shell = index + 1;
+        const volley = Math.floor(index / BASE_SECTION_CONCURRENCY) + 1;
+        launchedSections += 1;
+
+        if (index > 0 && index % BASE_SECTION_CONCURRENCY === 0) {
+          setLogs((current) => [
+            ...current,
+            `Launching base volley ${volley}: shells ${shell}-${Math.min(
+              shell + BASE_SECTION_CONCURRENCY - 1,
+              totalBaseSections,
+            )}.`,
+          ]);
+        }
+
+        setShellProgress({
+          label: "Base",
+          current: launchedSections,
+          total: totalBaseSections,
+        });
         setLogs((current) => [
           ...current,
-          `Firing Shell ${shell}: ${section.title} (${shell}/${total})`,
+          `Firing Shell ${shell}: ${section.title} (${shell}/${totalBaseSections})`,
         ]);
 
         const sectionResult = await fetchStreamingSectionResult({
           requestPayload,
           section,
           shell,
-          total,
+          total: totalBaseSections,
           onChunk: (content) => {
             generatedSections[index] = {
               title: section.title,
               content,
             };
             setSections([...generatedSections]);
-            setMetrics(calculateClientMetrics(generatedSections, shell / total));
+            setMetrics(
+              calculateClientMetrics(
+                generatedSections,
+                Math.max(completedSections / totalBaseSections, shell / totalBaseSections / 2),
+              ),
+            );
           },
           onRetry: (message) => {
             setLogs((current) => [...current, message]);
@@ -777,9 +846,19 @@ export default function Home() {
         }
 
         generatedSections[index] = sectionResult.section;
+        completedSections += 1;
+        setShellProgress({
+          label: "Base",
+          current: completedSections,
+          total: totalBaseSections,
+        });
         setSections([...generatedSections]);
-        setMetrics(calculateClientMetrics(generatedSections, shell / total));
-      }
+        setMetrics(calculateClientMetrics(generatedSections, completedSections / totalBaseSections));
+        setLogs((current) => [
+          ...current,
+          `Shell ${shell} reporting excessive paragraph pressure.`,
+        ]);
+      });
 
       if (slopDensity === 11) {
         setLogs((current) => [
@@ -788,23 +867,58 @@ export default function Home() {
           "Re-chambering the Appendix Goblin.",
         ]);
 
-        const inflatedSections: GeneratedPreviewSection[] = [];
+        const inflatedSections: GeneratedPreviewSection[] = generatedSections.flatMap((section) => [
+          section,
+          {
+            title: `Supplemental Addendum ${generatedSections.indexOf(section) + 1}`,
+            content: "",
+          },
+        ]);
+        let launchedAddenda = 0;
+        let completedAddenda = 0;
+        const totalAddenda = generatedSections.length;
+        setSections([...inflatedSections]);
 
-        for (let index = 0; index < generatedSections.length; index += 1) {
-          const section = generatedSections[index];
-          inflatedSections.push(section);
+        setLogs((current) => [
+          ...current,
+          `Launching second volley 1: addenda 1-${Math.min(
+            INFLATE_CONCURRENCY,
+            totalAddenda,
+          )}.`,
+        ]);
 
+        await runWithConcurrency(generatedSections, INFLATE_CONCURRENCY, async (section, index) => {
+          const addendumSlot = index * 2 + 1;
+          const addendumNumber = index + 1;
+          const volley = Math.floor(index / INFLATE_CONCURRENCY) + 1;
+          launchedAddenda += 1;
+
+          if (index > 0 && index % INFLATE_CONCURRENCY === 0) {
+            setLogs((current) => [
+              ...current,
+              `Launching second volley ${volley}: addenda ${addendumNumber}-${Math.min(
+                addendumNumber + INFLATE_CONCURRENCY - 1,
+                totalAddenda,
+              )}.`,
+            ]);
+          }
+
+          setShellProgress({
+            label: "Appendix",
+            current: launchedAddenda,
+            total: totalAddenda,
+          });
           setLogs((current) => [
             ...current,
-            `Inflating Section ${index + 1} beyond reasonable administrative necessity.`,
+            `Inflating Section ${addendumNumber} beyond reasonable administrative necessity.`,
             "Deploying supplemental non-admission vapor.",
           ]);
 
           const inflateResult = await fetchInflateResult({
             requestPayload,
             section,
-            sectionNumber: index + 1,
-            addendumNumber: index + 1,
+            sectionNumber: addendumNumber,
+            addendumNumber,
             onRetry: (message) => {
               setLogs((current) => [...current, message]);
             },
@@ -817,19 +931,25 @@ export default function Home() {
           if (inflateResult.placeholder && inflateResult.warning) {
             setLogs((current) => [
               ...current,
-              `Second-volley addendum ${index + 1} jammed briefly: ${inflateResult.warning}`,
+              `Second-volley addendum ${addendumNumber} jammed briefly: ${inflateResult.warning}`,
             ]);
           }
 
-          inflatedSections.push(inflateResult.addendum);
+          inflatedSections[addendumSlot] = inflateResult.addendum;
+          completedAddenda += 1;
+          setShellProgress({
+            label: "Appendix",
+            current: completedAddenda,
+            total: totalAddenda,
+          });
           setSections([...inflatedSections]);
           setMetrics(
             calculateClientMetrics(
               inflatedSections,
-              (generatedSections.length + index + 1) / (generatedSections.length * 2),
+              (totalBaseSections + completedAddenda) / (totalBaseSections + totalAddenda),
             ),
           );
-        }
+        });
 
         generatedSections.splice(0, generatedSections.length, ...inflatedSections);
         setLogs((current) => [...current, "Quadrupling procedural surface area."]);
@@ -855,8 +975,7 @@ export default function Home() {
     <main className="app-shell min-h-[100dvh] bg-[#15130f] text-stone-100">
       <div className="mx-auto flex w-full max-w-[1600px] flex-col gap-6 px-4 py-5 sm:px-6 lg:px-8">
         <header className="no-print border-b border-stone-700/70 pb-5">
-          <div className="flex items-center gap-4">
-            <CannonMark className="h-16 w-16 shrink-0 md:h-20 md:w-20" />
+          <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
             <div>
               <p className="mb-2 font-mono text-xs font-black uppercase tracking-[0.28em] text-amber-300">
                 FLOOD THE ZONE
@@ -864,10 +983,18 @@ export default function Home() {
               <h1 className="max-w-5xl text-4xl font-black leading-none tracking-tight text-stone-50 md:text-6xl">
                 The Procedural Fog Machine
               </h1>
-              <p className="mt-3 font-mono text-sm font-bold uppercase tracking-[0.18em] text-red-300">
-                Not legal advice
+              <p className="mt-3 max-w-2xl text-base font-bold text-stone-300 md:text-lg">
+                A Slop Cannon for bureaucratic self-defense. Not legal advice.
               </p>
             </div>
+            <Image
+              src="/brand/header-logo-options/header-logo-05.png"
+              alt=""
+              width={360}
+              height={220}
+              priority
+              className="h-auto w-44 shrink-0 object-contain sm:w-56 lg:w-72"
+            />
           </div>
         </header>
 
@@ -885,10 +1012,10 @@ export default function Home() {
               </div>
               <div className="grid grid-cols-2 gap-2 sm:grid-cols-5">
                 <CompactMetric
-                  label="Shell"
+                  label="Progress"
                   value={
                     shellProgress
-                      ? `${shellProgress.current}/${shellProgress.total}`
+                      ? `${shellProgress.label} ${shellProgress.current}/${shellProgress.total}`
                       : "Ready"
                   }
                 />
@@ -1080,7 +1207,7 @@ export default function Home() {
                 <span className="flex items-center justify-between gap-3 text-sm font-semibold text-stone-200">
                   <span>Slop Density</span>
                   <span className="font-mono text-amber-200">
-                    {slopDensity}/11, {densityLabel}
+                    {densityLabel}
                   </span>
                 </span>
                 <input
@@ -1106,8 +1233,14 @@ export default function Home() {
                 disabled={isGenerating}
                 className="flex min-h-16 w-full items-center justify-between gap-4 border border-amber-200 bg-amber-300 px-5 py-4 text-left text-base font-black uppercase tracking-[0.12em] text-stone-950 shadow-[6px_6px_0_rgba(120,53,15,0.55)] transition hover:-translate-y-0.5 hover:bg-amber-200 active:translate-x-1 active:translate-y-1 active:shadow-none disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0 lg:col-span-2"
               >
-                <span>{isGenerating ? "FIRING SHELLS..." : "FIRE THE FOG MACHINE"}</span>
-                <CannonMark className="h-10 w-10 shrink-0" dark />
+                <span>{isGenerating ? "FIRING SHELLS..." : "FIRE THE SLOP CANNON"}</span>
+                <Image
+                  src="/brand/cta-icon-options/cta-icon-01.png"
+                  alt=""
+                  width={96}
+                  height={96}
+                  className="h-12 w-12 shrink-0 object-contain sm:h-14 sm:w-14"
+                />
               </button>
 
             </div>
@@ -1142,7 +1275,7 @@ export default function Home() {
               </section>
 
               <section className="document-preview-shell min-h-[760px] border border-stone-700 bg-[#e9dfc9] p-3 text-stone-950 sm:p-5 lg:p-7">
-                <div className="no-print sticky top-[92px] z-10 -mx-3 mb-4 grid gap-3 border-b border-stone-400/70 bg-[#e9dfc9]/95 px-3 py-2 backdrop-blur sm:-mx-5 sm:px-5 lg:-mx-7 lg:grid-cols-[1fr_auto] lg:items-center lg:px-7">
+                <div className="no-print -mx-3 mb-4 grid gap-3 border-b border-stone-400/70 bg-[#e9dfc9] px-3 py-2 sm:-mx-5 sm:px-5 lg:-mx-7 lg:grid-cols-[1fr_auto] lg:items-center lg:px-7">
                   <div>
                     <p className="font-mono text-[11px] font-bold uppercase tracking-[0.18em] text-stone-600">
                       Packet Theater
@@ -1181,10 +1314,7 @@ export default function Home() {
                   </p>
                 ) : null}
                 <div className="document-preview mx-auto min-h-[720px] max-w-6xl border border-stone-400 bg-[#fffaf0] px-6 py-8 shadow-[10px_10px_0_rgba(68,64,60,0.18)] sm:px-10 lg:px-14">
-                  <p className="document-kicker font-mono text-[11px] font-bold uppercase tracking-[0.18em] text-amber-900">
-                    Comedy-powered drafting support. Not legal advice.
-                  </p>
-                  <h2 className="document-title mt-3 text-3xl font-black tracking-tight">
+                  <h2 className="document-title text-3xl font-black tracking-tight">
                     Procedural Response Packet
                   </h2>
                   <div className="document-metadata mt-4 grid gap-2 border-y border-stone-300 py-4 font-mono text-xs uppercase tracking-[0.1em] text-stone-700 sm:grid-cols-3">
@@ -1262,55 +1392,5 @@ function CompactMetric({ label, value }: { label: string; value: string }) {
       </p>
       <p className="mt-1 truncate font-mono text-sm font-black text-amber-200">{value}</p>
     </div>
-  );
-}
-
-function CannonMark({ className, dark = false }: { className?: string; dark?: boolean }) {
-  return (
-    <svg
-      viewBox="0 0 120 120"
-      aria-hidden="true"
-      className={className}
-      fill="none"
-      xmlns="http://www.w3.org/2000/svg"
-    >
-      <rect
-        x="10"
-        y="10"
-        width="100"
-        height="100"
-        fill={dark ? "#15130f" : "#4a1111"}
-        stroke={dark ? "#15130f" : "#fca5a5"}
-        strokeWidth="4"
-      />
-      <path
-        d="M33 72h42c11 0 19-8 19-19v-5H56c-13 0-23 10-23 23v1Z"
-        fill={dark ? "#b91c1c" : "#ef4444"}
-        stroke={dark ? "#15130f" : "#fee2e2"}
-        strokeWidth="5"
-        strokeLinejoin="round"
-      />
-      <path
-        d="M76 48V33h16v15"
-        stroke={dark ? "#15130f" : "#fee2e2"}
-        strokeWidth="5"
-        strokeLinecap="square"
-        strokeLinejoin="round"
-      />
-      <path
-        d="M26 78h62"
-        stroke={dark ? "#15130f" : "#fef3c7"}
-        strokeWidth="6"
-        strokeLinecap="square"
-      />
-      <circle cx="43" cy="87" r="8" fill={dark ? "#15130f" : "#fbbf24"} />
-      <circle cx="78" cy="87" r="8" fill={dark ? "#15130f" : "#fbbf24"} />
-      <path
-        d="M22 38h18M18 51h15M24 64h10"
-        stroke={dark ? "#15130f" : "#fbbf24"}
-        strokeWidth="5"
-        strokeLinecap="square"
-      />
-    </svg>
   );
 }

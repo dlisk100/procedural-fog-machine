@@ -19,6 +19,7 @@ const SECTION_RETRY_DELAYS_MS = [1500, 4000, 8000];
 const BASE_SECTION_CONCURRENCY = 6;
 const INFLATE_CONCURRENCY = 4;
 const MAX_PDF_EXPORT_PAYLOAD_BYTES = 3_900_000;
+const BRIEFING_STORAGE_KEY = "procedural-fog-machine-briefing-dismissed";
 
 const GENERATION_STATUS_MESSAGES = [
   "Writing slop.",
@@ -637,6 +638,13 @@ export default function Home() {
   const [pdfInputResetKey, setPdfInputResetKey] = useState(0);
   const [statusMessageIndex, setStatusMessageIndex] = useState(0);
   const [shellProgress, setShellProgress] = useState<ProgressState | null>(null);
+  const [isBriefingOpen, setIsBriefingOpen] = useState(() => {
+    if (typeof window === "undefined") {
+      return false;
+    }
+
+    return window.localStorage.getItem(BRIEFING_STORAGE_KEY) !== "true";
+  });
   const [packetMetadata, setPacketMetadata] = useState<PacketMetadataState>(
     INITIAL_PACKET_METADATA,
   );
@@ -673,6 +681,11 @@ export default function Home() {
 
     return () => window.clearInterval(interval);
   }, [isGenerating]);
+
+  function dismissBriefing() {
+    window.localStorage.setItem(BRIEFING_STORAGE_KEY, "true");
+    setIsBriefingOpen(false);
+  }
 
   function resetOutput() {
     setMetrics(INITIAL_METRICS);
@@ -1229,6 +1242,71 @@ export default function Home() {
 
   return (
     <main className="app-shell min-h-[100dvh] bg-[#15130f] text-stone-100">
+      {isBriefingOpen ? (
+        <div
+          className="fixed inset-0 z-[100] grid place-items-center bg-stone-950/80 px-4 py-6 backdrop-blur-sm"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="briefing-title"
+        >
+          <section className="w-full max-w-2xl border border-amber-300/60 bg-[#211d17] p-5 shadow-[10px_10px_0_rgba(120,53,15,0.45)] sm:p-6">
+            <p className="font-mono text-[11px] font-black uppercase tracking-[0.24em] text-amber-300">
+              Mission Briefing
+            </p>
+            <h2 id="briefing-title" className="mt-2 text-3xl font-black tracking-tight">
+              Fire the cannon in three steps
+            </h2>
+            <div className="mt-5 grid gap-3">
+              {[
+                {
+                  label: "1",
+                  title: "Paste the scary message",
+                  body: "Drop in the landlord, admin, compliance, or portal message that needs bureaucratic fog.",
+                },
+                {
+                  label: "2",
+                  title: "Optional: add fog fuel",
+                  body: "Paste or upload a lease, policy, contract, or notice only if you want extra context.",
+                },
+                {
+                  label: "3",
+                  title: "Set density, then fire",
+                  body: "Density 10 is the public demo preset. Higher settings mean more ceremonial paperwork.",
+                },
+              ].map((item) => (
+                <div
+                  key={item.label}
+                  className="grid gap-3 border border-stone-700 bg-stone-950/50 p-3 sm:grid-cols-[2rem_1fr]"
+                >
+                  <span className="grid h-8 w-8 place-items-center bg-amber-300 font-mono text-sm font-black text-stone-950">
+                    {item.label}
+                  </span>
+                  <div>
+                    <h3 className="font-bold text-stone-100">{item.title}</h3>
+                    <p className="mt-1 text-sm leading-6 text-stone-400">{item.body}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+            <div className="mt-5 flex flex-col gap-2 sm:flex-row sm:justify-end">
+              <button
+                type="button"
+                onClick={() => setIsBriefingOpen(false)}
+                className="border border-stone-600 px-4 py-3 text-xs font-bold uppercase tracking-[0.14em] text-stone-200 transition hover:border-stone-300 active:translate-y-[1px]"
+              >
+                Review Controls
+              </button>
+              <button
+                type="button"
+                onClick={dismissBriefing}
+                className="border border-amber-200 bg-amber-300 px-4 py-3 text-xs font-black uppercase tracking-[0.14em] text-stone-950 transition hover:bg-amber-200 active:translate-y-[1px]"
+              >
+                Begin Preflight
+              </button>
+            </div>
+          </section>
+        </div>
+      ) : null}
       <div className="mx-auto flex w-full max-w-[1600px] flex-col gap-6 px-4 py-5 sm:px-6 lg:px-8">
         <header className="no-print border-b border-stone-700/70 pb-5">
           <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
@@ -1297,11 +1375,18 @@ export default function Home() {
               <div className="flex flex-wrap justify-end gap-2">
                 <button
                   type="button"
+                  onClick={() => setIsBriefingOpen(true)}
+                  className="border border-stone-600 px-3 py-2 text-xs font-bold uppercase tracking-[0.14em] text-stone-200 transition hover:border-amber-300 hover:text-amber-200 active:translate-y-[1px]"
+                >
+                  Briefing
+                </button>
+                <button
+                  type="button"
                   onClick={() => setThreatText(SAMPLE_INPUT)}
                   disabled={isGenerating}
                   className="border border-stone-600 px-3 py-2 text-xs font-bold uppercase tracking-[0.14em] text-stone-200 transition hover:border-amber-300 hover:text-amber-200 active:translate-y-[1px] disabled:cursor-not-allowed disabled:opacity-50"
                 >
-                  Sample
+                  Load Sample
                 </button>
                 <button
                   type="button"

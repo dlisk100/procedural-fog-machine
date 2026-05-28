@@ -1204,9 +1204,9 @@ export default function Home() {
               </div>
             </div>
 
-            <div className="grid items-start gap-4 p-4 sm:p-5 lg:grid-cols-12">
-              <label className="grid content-start gap-2 lg:col-span-7">
-                <span className="text-sm font-semibold text-stone-200">
+            <div className="grid gap-4 p-4 sm:p-5 lg:grid-cols-12">
+              <label className="grid grid-rows-[auto_1fr] gap-3 border border-stone-700 bg-stone-950/45 p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.05)] lg:col-span-7">
+                <span className="text-base font-black tracking-tight text-stone-100">
                   Paste the scary message
                 </span>
                 <textarea
@@ -1214,7 +1214,7 @@ export default function Home() {
                   onChange={(event) => setThreatText(event.target.value)}
                   disabled={isGenerating}
                   rows={9}
-                  className="min-h-[300px] resize-y border border-stone-600 bg-stone-950/80 px-3 py-3 text-sm leading-6 text-stone-100 outline-none transition placeholder:text-stone-600 focus:border-amber-300 disabled:cursor-not-allowed disabled:opacity-70"
+                  className="h-full min-h-[300px] resize-y border border-stone-600 bg-stone-950/80 px-3 py-3 text-sm leading-6 text-stone-100 outline-none transition placeholder:text-stone-600 focus:border-amber-300 disabled:cursor-not-allowed disabled:opacity-70"
                   placeholder="Paste the threatening portal message, stern landlord note, compliance memo, or suspiciously confident administrative thunderclap."
                 />
               </label>

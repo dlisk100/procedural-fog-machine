@@ -849,7 +849,7 @@ export default function Home() {
     ]);
     setPacketMetadata(OUTLINE_METADATA);
     setSections([...generatedSections]);
-    await sleep(180);
+    await sleep(450);
 
     for (let index = 0; index < cachedSections.length; index += 1) {
       if (shouldStopReplay()) {
@@ -876,7 +876,7 @@ export default function Home() {
         `Firing archived Shell ${shell}: ${cachedSection.title} (${shell}/${totalBaseSections})`,
       ]);
 
-      const chunkCount = 2;
+      const chunkCount = 4;
       for (let chunk = 1; chunk <= chunkCount; chunk += 1) {
         if (shouldStopReplay()) {
           return;
@@ -896,7 +896,7 @@ export default function Home() {
             (index + chunk / chunkCount) / totalBaseSections,
           ),
         );
-        await sleep(25);
+        await sleep(70);
       }
 
       setShellProgress({
@@ -908,7 +908,7 @@ export default function Home() {
         ...current,
         `Archived Shell ${shell} reporting excessive paragraph pressure.`,
       ]);
-      await sleep(35);
+      await sleep(120);
     }
 
     if (shouldStopReplay()) {

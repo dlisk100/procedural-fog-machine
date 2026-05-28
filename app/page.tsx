@@ -1271,7 +1271,7 @@ export default function Home() {
                 {
                   label: "3",
                   title: "Set density, then fire",
-                  body: "Density 10 is the public demo preset. Higher settings mean more ceremonial paperwork.",
+                  body: "Higher settings mean more ceremonial paperwork.",
                 },
               ].map((item) => (
                 <div

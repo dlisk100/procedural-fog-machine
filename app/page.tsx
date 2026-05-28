@@ -1361,11 +1361,11 @@ export default function Home() {
                   value={slopDensity}
                   onChange={(event) => setSlopDensity(Number(event.target.value))}
                   disabled={isGenerating}
-                  className="density-slider h-2 w-full appearance-none disabled:opacity-60"
+                  className="density-slider h-8 w-full appearance-none disabled:opacity-60"
                   style={
                     {
-                      "--density-fill": `${(Math.min(slopDensity, 10) / 11) * 100}%`,
-                      "--density-visible-end": `${(10 / 11) * 100}%`,
+                      "--density-fill": `${((Math.min(slopDensity, 10) - 1) / 10) * 100}%`,
+                      "--density-visible-end": `${((10 - 1) / 10) * 100}%`,
                     } as React.CSSProperties
                   }
                 />

@@ -27,15 +27,27 @@ type OpenRouterResponse = {
   };
 };
 
-export const OPENROUTER_OUTLINE_MODEL =
-  process.env.OPENROUTER_OUTLINE_MODEL ||
-  process.env.OPENROUTER_MODEL ||
-  "openrouter/auto";
+export const DEFAULT_OPENROUTER_MODEL = "x-ai/grok-4.3";
 
-export const OPENROUTER_SECTION_MODEL =
-  process.env.OPENROUTER_SECTION_MODEL ||
-  process.env.OPENROUTER_MODEL ||
-  "openrouter/auto";
+function normalizeOpenRouterModel(model: string | undefined): string {
+  if (!model) {
+    return DEFAULT_OPENROUTER_MODEL;
+  }
+
+  if (model.includes("grok-4.1")) {
+    return DEFAULT_OPENROUTER_MODEL;
+  }
+
+  return model;
+}
+
+export const OPENROUTER_OUTLINE_MODEL = normalizeOpenRouterModel(
+  process.env.OPENROUTER_OUTLINE_MODEL || process.env.OPENROUTER_MODEL,
+);
+
+export const OPENROUTER_SECTION_MODEL = normalizeOpenRouterModel(
+  process.env.OPENROUTER_SECTION_MODEL || process.env.OPENROUTER_MODEL,
+);
 
 function extractAssistantContent(payload: OpenRouterResponse): string {
   const message = payload.choices?.[0]?.message;
@@ -110,7 +122,7 @@ export async function callOpenRouter(
     if (error instanceof Error && error.name === "AbortError") {
       throw new Error(
         `OpenRouter request timed out after ${Math.round(timeoutMs / 1000)}s for model ${
-          options.model || "openrouter/auto"
+          options.model || DEFAULT_OPENROUTER_MODEL
         }.`,
       );
     }
@@ -142,7 +154,7 @@ export async function callOpenRouter(
   if (!content) {
     throw new Error(
       `OpenRouter response did not include assistant content for model ${
-        options.model || "openrouter/auto"
+        options.model || DEFAULT_OPENROUTER_MODEL
       }. ${summarizeOpenRouterResponse(payload, responseText)}`,
     );
   }

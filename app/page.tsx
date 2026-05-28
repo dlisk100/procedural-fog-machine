@@ -10,9 +10,9 @@ import type {
   ParsedPdfResponse,
   Stance,
 } from "@/lib/types";
+import { DEFAULT_SAMPLE_INPUT, getSampleCacheHit } from "@/lib/sampleCache";
 
-const SAMPLE_INPUT =
-  "You are in violation of your lease due to an unauthorized pet. Remove the pet within 48 hours or face penalties.";
+const SAMPLE_INPUT = DEFAULT_SAMPLE_INPUT;
 const JAMMED_SECTION_CONTENT =
   "This shell jammed briefly, but the procedural fog remains intact. Please regard this section as a courteous placeholder preserving the packet's ceremonial continuity without adding facts, admissions, threats, citations, or unnecessary confidence.";
 const SECTION_RETRY_DELAYS_MS = [1500, 4000, 8000];
@@ -826,6 +826,104 @@ export default function Home() {
     }
   }
 
+  async function replayCachedPacket(args: {
+    outline: CannonOutline;
+    sections: GeneratedSection[];
+    abortController: AbortController;
+    generationId: number;
+  }) {
+    const { outline, sections: cachedSections, abortController, generationId } = args;
+    const totalBaseSections = cachedSections.length;
+    const generatedSections: GeneratedPreviewSection[] = cachedSections.map((section) => ({
+      title: section.title,
+      content: "",
+    }));
+
+    const shouldStopReplay = () =>
+      abortController.signal.aborted || generationIdRef.current !== generationId;
+
+    setLogs((current) => [
+      ...current,
+      "Demo packet retrieved from the sealed archive of previously authorized fog.",
+      `Outline loaded: ${outline.sections.length} archived shells queued.`,
+    ]);
+    setPacketMetadata(OUTLINE_METADATA);
+    setSections([...generatedSections]);
+    await sleep(450);
+
+    for (let index = 0; index < cachedSections.length; index += 1) {
+      if (shouldStopReplay()) {
+        return;
+      }
+
+      const shell = index + 1;
+      const cachedSection = cachedSections[index];
+      const sectionMetadata =
+        SECTION_METADATA_MESSAGES[index % SECTION_METADATA_MESSAGES.length] ??
+        SECTION_METADATA_MESSAGES[0];
+
+      setShellProgress({
+        label: "Archived Sections",
+        current: shell,
+        total: totalBaseSections,
+      });
+      setPacketMetadata({
+        ...sectionMetadata,
+        admissions: "0",
+      });
+      setLogs((current) => [
+        ...current,
+        `Firing archived Shell ${shell}: ${cachedSection.title} (${shell}/${totalBaseSections})`,
+      ]);
+
+      const chunkCount = 4;
+      for (let chunk = 1; chunk <= chunkCount; chunk += 1) {
+        if (shouldStopReplay()) {
+          return;
+        }
+
+        generatedSections[index] = {
+          title: cachedSection.title,
+          content: cachedSection.content.slice(
+            0,
+            Math.ceil((cachedSection.content.length * chunk) / chunkCount),
+          ),
+        };
+        setSections([...generatedSections]);
+        setMetrics(
+          calculateClientMetrics(
+            generatedSections,
+            (index + chunk / chunkCount) / totalBaseSections,
+          ),
+        );
+        await sleep(70);
+      }
+
+      setShellProgress({
+        label: "Archived Sections",
+        current: shell,
+        total: totalBaseSections,
+      });
+      setLogs((current) => [
+        ...current,
+        `Archived Shell ${shell} reporting excessive paragraph pressure.`,
+      ]);
+      await sleep(120);
+    }
+
+    if (shouldStopReplay()) {
+      return;
+    }
+
+    setPacketMetadata(COMPLETE_PACKET_METADATA);
+    setCompletionMessage("Cannon discharged. Bureaucracy deployed.");
+    setLogs((current) => [
+      ...current,
+      "Cached demo volley complete. No external model invoice was harmed.",
+      "Cannon discharged. Bureaucracy deployed.",
+    ]);
+  }
+
   async function fireFogMachine() {
     if (threatText.trim().length < 5) {
       setError("Paste at least five characters so the machine has something to over-process.");
@@ -860,6 +958,18 @@ export default function Home() {
         governingDocumentText,
         governingDocumentName,
       };
+      const cachedPacket = getSampleCacheHit(requestPayload);
+
+      if (cachedPacket) {
+        await replayCachedPacket({
+          outline: cachedPacket.outline,
+          sections: cachedPacket.sections,
+          abortController,
+          generationId,
+        });
+        return;
+      }
+
       const outlineResponse = await fetch("/api/cannon/outline", {
         method: "POST",
         headers: {

@@ -1288,20 +1288,13 @@ export default function Home() {
                 </div>
               ))}
             </div>
-            <div className="mt-5 flex flex-col gap-2 sm:flex-row sm:justify-end">
-              <button
-                type="button"
-                onClick={() => setIsBriefingOpen(false)}
-                className="border border-stone-600 px-4 py-3 text-xs font-bold uppercase tracking-[0.14em] text-stone-200 transition hover:border-stone-300 active:translate-y-[1px]"
-              >
-                Review Controls
-              </button>
+            <div className="mt-5 flex justify-end">
               <button
                 type="button"
                 onClick={dismissBriefing}
                 className="border border-amber-200 bg-amber-300 px-4 py-3 text-xs font-black uppercase tracking-[0.14em] text-stone-950 transition hover:bg-amber-200 active:translate-y-[1px]"
               >
-                Begin Preflight
+                Got It
               </button>
             </div>
           </section>
